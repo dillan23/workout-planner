@@ -1,20 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import type { AnalysisResult } from "@/types";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
-
-export interface AnalysisResult {
-  archetype: string;
-  archetypeSubtitle: string;
-  roasts: string[];
-  fakeStat: string;
-  deepestFear: string;
-  mostLikelyTo: string;
-  energyOf: string;
-  shareText: string;
-}
 
 export async function POST(request: NextRequest) {
   try {

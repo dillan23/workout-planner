@@ -108,6 +108,12 @@ export default function HomePage() {
               setPosts(e.target.value);
               setError("");
             }}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !loading) {
+                e.preventDefault();
+                handleAnalyze();
+              }
+            }}
             placeholder={PLACEHOLDER}
             rows={10}
             className="w-full bg-transparent text-white/80 placeholder:text-white/20 resize-none outline-none text-sm leading-relaxed font-mono"
