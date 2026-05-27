@@ -14,11 +14,28 @@ const GRADIENT_CONFIGS = [
   { from: "#6366f1", to: "#8b5cf6" },
 ];
 
+// Total animation time: last card delay (1.0s) + reveal duration (0.6s) + buffer
+const RECORD_DURATION_MS = 4200;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+type RecordingState = "idle" | "requesting" | "recording" | "done" | "error";
+
 export default function ResultsPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
-  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Screen recording state
+  const [replayKey, setReplayKey] = useState(0);
+  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -33,6 +50,84 @@ export default function ResultsPage() {
       router.push("/");
     }
   }, [router]);
+
+  // Cleanup object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [recordedUrl]);
+
+  async function handleRecord() {
+    setRecordedUrl(null);
+    setRecordingState("requesting");
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 },
+        audio: false,
+        // @ts-expect-error — Chrome-only hint to pre-select current tab
+        preferCurrentTab: true,
+      });
+    } catch {
+      // User cancelled the dialog
+      setRecordingState("idle");
+      return;
+    }
+
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : "video/webm";
+
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "video/webm" });
+      const url = URL.createObjectURL(blob);
+      setRecordedUrl(url);
+      setRecordingState("done");
+      stream.getTracks().forEach((t) => t.stop());
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+
+    // If user stops sharing tab manually, clean up
+    stream.getVideoTracks()[0].onended = () => {
+      if (recorder.state === "recording") recorder.stop();
+    };
+
+    recorder.start(100);
+    setRecordingState("recording");
+
+    // Start countdown
+    const totalSeconds = Math.ceil(RECORD_DURATION_MS / 1000);
+    setCountdown(totalSeconds);
+    countdownRef.current = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+
+    // Scroll to top then replay animation
+    window.scrollTo({ top: 0, behavior: "instant" });
+    await sleep(300);
+    setReplayKey((k) => k + 1);
+
+    // Auto-stop after all cards have animated in
+    await sleep(RECORD_DURATION_MS);
+    if (recorder.state === "recording") recorder.stop();
+  }
+
+  function handleStopEarly() {
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+    }
+  }
 
   async function handleCopyShareText() {
     if (!result) return;
@@ -193,6 +288,22 @@ export default function ResultsPage() {
         />
       </div>
 
+      {/* Recording indicator — fixed overlay so it stays visible while scrolled */}
+      {recordingState === "recording" && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-black/80 backdrop-blur border border-red-500/40 rounded-full px-5 py-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-sm font-semibold text-white">
+            Recording {countdown > 0 ? `· ${countdown}s` : ""}
+          </span>
+          <button
+            onClick={handleStopEarly}
+            className="text-xs text-white/50 hover:text-white transition-colors border border-white/20 rounded-full px-2 py-0.5 ml-1"
+          >
+            stop
+          </button>
+        </div>
+      )}
+
       <div className="relative z-10 max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10 animate-slide-up">
@@ -205,11 +316,11 @@ export default function ResultsPage() {
           </p>
         </div>
 
-        {/* Cards Grid */}
-        <div ref={cardRef} className="grid gap-4">
+        {/* Cards Grid — key forces remount to replay animations */}
+        <div key={replayKey} className="grid gap-4">
           {cards.map((card, i) => (
             <ResultCard
-              key={card.id}
+              key={`${replayKey}-${card.id}`}
               gradient={card.gradient}
               delay={i}
             >
@@ -224,7 +335,42 @@ export default function ResultsPage() {
             Share your results — make your friends get roasted too
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center flex-wrap">
+            {/* Record button */}
+            <button
+              onClick={handleRecord}
+              disabled={recordingState === "recording" || recordingState === "requesting"}
+              className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              style={{
+                background:
+                  recordingState === "done"
+                    ? "linear-gradient(135deg, #10b981, #059669)"
+                    : "linear-gradient(135deg, #ef4444, #ec4899)",
+              }}
+            >
+              {recordingState === "requesting" && "⏳ Opening..."}
+              {recordingState === "recording" && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  Recording...
+                </>
+              )}
+              {recordingState === "done" && "✓ Recorded!"}
+              {recordingState === "idle" && "🎬 Record my reveal"}
+              {recordingState === "error" && "⚠️ Try again"}
+            </button>
+
+            {/* Download — appears after recording */}
+            {recordedUrl && (
+              <a
+                href={recordedUrl}
+                download="my-feed-roast.webm"
+                className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm bg-white/15 hover:bg-white/20 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/20"
+              >
+                ⬇️ Download video
+              </a>
+            )}
+
             <button
               onClick={handleCopyShareText}
               className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95"
@@ -234,24 +380,34 @@ export default function ResultsPage() {
                   : "linear-gradient(135deg, #a855f7, #ec4899)",
               }}
             >
-              {copied ? "✓ Copied!" : "📋 Copy share text"}
+              {copied ? "✓ Copied!" : "📋 Copy caption"}
             </button>
 
             <button
               onClick={handleRedo}
               className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm bg-white/10 hover:bg-white/15 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10"
             >
-              🔄 Read a different feed
+              🔄 New feed
             </button>
           </div>
 
           {shareMsg && (
-            <p className="text-green-400 text-sm mt-3 animate-slide-up">
-              {shareMsg}
+            <p className="text-green-400 text-sm mt-3 animate-slide-up">{shareMsg}</p>
+          )}
+
+          {/* Recording tip */}
+          {recordingState === "idle" && !recordedUrl && (
+            <p className="text-white/25 text-xs mt-3">
+              Records the animated reveal — great for Reels &amp; TikTok
+            </p>
+          )}
+          {recordedUrl && (
+            <p className="text-white/35 text-xs mt-3">
+              Download the .webm then import to Reels, TikTok, or Stories
             </p>
           )}
 
-          {/* The shareable quote */}
+          {/* Shareable caption card */}
           <div className="mt-8 glass rounded-2xl p-5 text-left">
             <div className="text-xs text-white/40 uppercase tracking-widest mb-2 font-semibold">
               Your shareable caption
@@ -292,7 +448,6 @@ function ResultCard({
         borderStyle: "solid",
       }}
     >
-      {/* Subtle gradient blob */}
       <div
         className="absolute -bottom-8 -right-8 w-32 h-32 rounded-full blur-2xl opacity-30"
         style={{
