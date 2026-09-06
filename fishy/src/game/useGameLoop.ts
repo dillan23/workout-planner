@@ -7,10 +7,12 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { MAX_FRAME_TIME, PLAYER_START_SIZE, SIM_DT } from './constants';
-import { seedPond, stepEnemies, stepSpawner } from './enemies';
+import { MAX_FRAME_TIME, SIM_DT } from './constants';
+import { resolveCollisions } from './collision';
+import { stepEnemies, stepSpawner } from './enemies';
 import { stepPlayer } from './physics';
 import { createRng } from './rng';
+import { startRun } from './run';
 import {
   createEnemyPool,
   createInputState,
@@ -18,9 +20,9 @@ import {
   createPlayerState,
   L_ACCUMULATOR,
   L_ALPHA,
+  P_ALIVE,
   P_SIZE,
   P_SPAWNED,
-  resetPlayer,
 } from './state';
 
 export interface GameLoop {
@@ -72,8 +74,7 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     const seed = rng.value;
 
     if (p[P_SPAWNED] === 0) {
-      resetPlayer(p, width * 0.5, height * 0.5, PLAYER_START_SIZE);
-      seedPond(pool, l, p, seed, width, height);
+      startRun(p, pool, l, seed, width, height);
     }
 
     let dt = (frameInfo.timeSincePreviousFrame ?? 0) / 1000;
@@ -90,9 +91,14 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
 
     let accumulator = l[L_ACCUMULATOR] + dt;
     while (accumulator >= SIM_DT) {
-      stepPlayer(p, input.value, SIM_DT, width, height);
+      // The pond keeps swimming after a death, so the game over screen has a
+      // living backdrop rather than a frozen frame.
+      if (p[P_ALIVE] === 1) {
+        stepPlayer(p, input.value, SIM_DT, width, height);
+      }
       stepEnemies(pool, l, p[P_SIZE], SIM_DT, width);
       stepSpawner(pool, l, p, seed, SIM_DT, width, height);
+      resolveCollisions(p, pool, l);
       accumulator -= SIM_DT;
     }
     l[L_ACCUMULATOR] = accumulator;

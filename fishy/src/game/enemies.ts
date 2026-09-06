@@ -14,9 +14,9 @@ import {
   SPAWN_TARGET_START,
   SPEED_SIZE_EXPONENT,
   TAIL_WAG_HZ,
-  APEX_SIZE,
 } from './constants';
 import { SILHOUETTE_HALF_H, SILHOUETTE_HALF_W } from './fishGeometry';
+import { curveProgress } from './growth';
 import { nextFloat, nextRange } from './rng';
 import {
   E_FIELDS,
@@ -29,6 +29,7 @@ import {
   E_Y,
   L_ENEMY_COUNT,
   L_SPAWN_TIMER,
+  P_EATEN,
   P_SIZE,
   P_X,
   P_Y,
@@ -36,18 +37,6 @@ import {
 import { FIRST_PREDATOR_TIER, pickTier, tierSizeMultiplier } from './tiers';
 
 const TAU = Math.PI * 2;
-
-/**
- * How far the player is along the difficulty curve: 0 at the start of a run, 1
- * at apex size. Growth is logarithmic, so progress is measured in log space and
- * the three phases occupy roughly equal thirds of a run rather than the curve
- * spending almost all of its time in the last one.
- */
-export function curveProgress(playerSize: number): number {
-  'worklet';
-  const t = Math.log(playerSize) / Math.log(APEX_SIZE);
-  return t < 0 ? 0 : t > 1 ? 1 : t;
-}
 
 /** Vertical band a fish of this length can occupy with its fins still on screen. */
 function clampSpawnY(y: number, length: number, worldH: number): number {
@@ -116,7 +105,7 @@ export function spawnAtEdge(
   }
 
   const playerSize = player[P_SIZE];
-  const t = curveProgress(playerSize);
+  const t = curveProgress(player[P_EATEN]);
   const tier = pickTier(rng, t);
   const size = playerSize * tierSizeMultiplier(rng, tier);
   const length = size * PLAYER_BASE_LENGTH_PX;
@@ -149,7 +138,7 @@ export function seedPond(
   'worklet';
   const playerSize = player[P_SIZE];
   const playerLength = playerSize * PLAYER_BASE_LENGTH_PX;
-  const t = curveProgress(playerSize);
+  const t = curveProgress(player[P_EATEN]);
 
   for (let n = 0; n < SEED_FISH; n++) {
     const count = loop[L_ENEMY_COUNT];
@@ -243,9 +232,9 @@ export function stepEnemies(
 }
 
 /** How many fish the pond should be holding at this point on the curve. */
-export function spawnTarget(playerSize: number): number {
+export function spawnTarget(eaten: number): number {
   'worklet';
-  const t = curveProgress(playerSize);
+  const t = curveProgress(eaten);
   return SPAWN_TARGET_START + (SPAWN_TARGET_APEX - SPAWN_TARGET_START) * t;
 }
 
@@ -272,7 +261,7 @@ export function stepSpawner(
   }
   loop[L_SPAWN_TIMER] = nextRange(rng, SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX);
 
-  const target = spawnTarget(player[P_SIZE]);
+  const target = spawnTarget(player[P_EATEN]);
   for (let n = 0; n < SPAWN_MAX_PER_ATTEMPT; n++) {
     if (loop[L_ENEMY_COUNT] >= target) {
       return;

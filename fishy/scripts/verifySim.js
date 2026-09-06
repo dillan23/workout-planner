@@ -16,13 +16,26 @@ const G = require('../.verify/fishGeometry');
 const E = require('../.verify/enemies');
 const T = require('../.verify/tiers');
 const RNG = require('../.verify/rng');
+const GR = require('../.verify/growth');
+const COL = require('../.verify/collision');
+const RUN = require('../.verify/run');
 
 const PHONE = { w: 393, h: 852 };  // iPhone 15 logical portrait
 const ARENA = { w: 40000, h: 40000 }; // unclamped, for measuring pure dynamics
 
+/** Inverse of the growth curve, so a test can ask for a size and get a run
+ * whose eaten count actually sustains it. Size is derived from fish eaten, so
+ * setting it alone would just be eased back down to the starting size. */
+function eatenForSize(size) {
+  if (size <= C.PLAYER_START_SIZE) return 0;
+  return C.APEX_EATEN * Math.pow(Math.log(size) / Math.log(C.APEX_SIZE), 1 / C.GROWTH_EXPONENT);
+}
+
 function newRun(size = C.PLAYER_START_SIZE, x = 0, y = 0) {
   const p = S.createPlayerState();
   S.resetPlayer(p, x, y, size);
+  p[S.P_EATEN] = eatenForSize(size);
+  p[S.P_SIZE] = size;
   return { p, i: S.createInputState(), l: S.createLoopState() };
 }
 
@@ -177,11 +190,12 @@ for (const size of [1, 12]) {
 // Enemy pool and spawner
 // ---------------------------------------------------------------------------
 
-function newPond(seed = 1, playerSize = 1) {
+function newPond(seed = 1, eaten = 0) {
   const pool = S.createEnemyPool();
   const l = S.createLoopState();
   const p = S.createPlayerState();
-  S.resetPlayer(p, PHONE.w / 2, PHONE.h / 2, playerSize);
+  S.resetPlayer(p, PHONE.w / 2, PHONE.h / 2, GR.sizeForEaten(eaten));
+  p[S.P_EATEN] = eaten;
   return { pool, l, p, rng: RNG.createRng(seed) };
 }
 
@@ -360,35 +374,249 @@ const liveYs = (pond) => {
     'two 45 s runs matched slot for slot');
 }
 
-// 20. Curve progress lands the three phases where they are meant to.
+// 20. Curve progress paces the three phases in fish eaten, not in size.
 {
-  const t1 = E.curveProgress(1);
-  const tMid = E.curveProgress(Math.sqrt(C.APEX_SIZE));
-  const tApex = E.curveProgress(C.APEX_SIZE);
-  check('curve progress spans 0 to 1 in log space',
-    t1 === 0 && Math.abs(tMid - 0.5) < 1e-6 && Math.abs(tApex - 1) < 1e-6,
-    `size 1 -> ${t1.toFixed(2)}, size ${Math.sqrt(C.APEX_SIZE).toFixed(2)} -> ${tMid.toFixed(2)}, size ${C.APEX_SIZE} -> ${tApex.toFixed(2)}`);
+  const t0 = GR.curveProgress(0);
+  const tMid = GR.curveProgress(C.APEX_EATEN / 2);
+  const tApex = GR.curveProgress(C.APEX_EATEN);
+  check('the three phases get equal thirds of a run',
+    t0 === 0 && Math.abs(tMid - 0.5) < 1e-9 && Math.abs(tApex - 1) < 1e-9,
+    `0 fish -> ${t0.toFixed(2)}, ${C.APEX_EATEN / 2} -> ${tMid.toFixed(2)}, ${C.APEX_EATEN} -> ${tApex.toFixed(2)}`);
+
+  // Pinning the curve to size instead would race through the early phases.
+  const sizeBased = Math.log(GR.sizeForEaten(10)) / Math.log(C.APEX_SIZE);
+  check('pacing on fish eaten avoids the size-based front-load',
+    GR.curveProgress(10) < 0.1 && sizeBased > 0.2,
+    `after 10 fish: ${(GR.curveProgress(10) * 100).toFixed(0)}% by count vs ` +
+    `${(sizeBased * 100).toFixed(0)}% had it been keyed on size`);
 }
 
 // 21. The pond stays equally busy at every point on the curve.
 {
   const rows = [];
   let worst = 1;
-  for (const size of [1, 2, Math.sqrt(C.APEX_SIZE), 6, C.APEX_SIZE]) {
+  for (const eaten of [0, 30, C.APEX_EATEN / 2, 130, C.APEX_EATEN]) {
     const samples = [];
     for (const seed of [5, 17, 29]) {
-      const pond = newPond(seed, size);
+      const pond = newPond(seed, eaten);
       E.seedPond(pond.pool, pond.l, pond.p, pond.rng, PHONE.w, PHONE.h);
       const pops = runPond(pond, 120);
       samples.push(...pops.slice(Math.floor(pops.length / 2)));
     }
     const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
-    const target = E.spawnTarget(size);
+    const target = E.spawnTarget(eaten);
     worst = Math.min(worst, mean / target);
-    rows.push(`${size.toFixed(1)}:${mean.toFixed(1)}/${target.toFixed(0)}`);
+    rows.push(`${eaten}:${mean.toFixed(1)}/${target.toFixed(0)}`);
   }
   check('population holds its target from opening to apex', worst > 0.82,
-    `size:actual/target  ${rows.join('  ')} (worst ${(worst * 100).toFixed(0)}% of target)`);
+    `eaten:actual/target  ${rows.join('  ')} (worst ${(worst * 100).toFixed(0)}% of target)`);
+}
+
+// ---------------------------------------------------------------------------
+// Collision, eating, growth and death
+// ---------------------------------------------------------------------------
+
+const bodyOf = (x, y, len, facing) => ({
+  cx: x + facing * G.BODY_OFFSET_X * len,
+  cy: y,
+  rx: G.BODY_RX * len,
+  ry: G.BODY_RY * len,
+});
+
+// 22. Fins and tails are near misses, not hits.
+{
+  const len = 100;
+  // Nose to tail, 85 px apart: the silhouettes overlap, the bodies do not.
+  const tailGraze = COL.bodiesOverlap(0, 0, len, 1, 85, 0, len, 1);
+  const silhouettesTouch = 85 < G.SILHOUETTE_HALF_W * len * 2;
+  check('a clipped tail is not a hit', !tailGraze && silhouettesTouch,
+    `85 px apart: bodies overlap=${tailGraze}, silhouettes overlap=${silhouettesTouch}`);
+
+  // Stacked vertically so only the dorsal fins cross.
+  const finGraze = COL.bodiesOverlap(0, 0, len, 1, 0, 50, len, 1);
+  const finsTouch = 50 < G.SILHOUETTE_HALF_H * len * 2;
+  check('a brushed dorsal fin is not a hit', !finGraze && finsTouch,
+    `50 px apart: bodies overlap=${finGraze}, fins overlap=${finsTouch}`);
+
+  check('a body-on-body hit still registers', COL.bodiesOverlap(0, 0, len, 1, 30, 0, len, 1),
+    '30 px apart, squarely overlapping');
+}
+
+// 23. The summed-radii test really is exact, checked against brute force.
+{
+  const rng = RNG.createRng(1234);
+  let disagreements = 0, tested = 0;
+  for (let n = 0; n < 3000; n++) {
+    const aLen = RNG.nextRange(rng, 20, 300), bLen = RNG.nextRange(rng, 20, 300);
+    const ax = 0, ay = 0;
+    const bx = RNG.nextRange(rng, -400, 400), by = RNG.nextRange(rng, -200, 200);
+    const aFacing = RNG.nextFloat(rng) < 0.5 ? 1 : -1;
+    const bFacing = RNG.nextFloat(rng) < 0.5 ? 1 : -1;
+    const analytic = COL.bodiesOverlap(ax, ay, aLen, aFacing, bx, by, bLen, bFacing);
+
+    // Brute force: does any point lie inside both ellipses?
+    const A = bodyOf(ax, ay, aLen, aFacing), B = bodyOf(bx, by, bLen, bFacing);
+    const inside = (E, x, y) => ((x - E.cx) / E.rx) ** 2 + ((y - E.cy) / E.ry) ** 2 <= 1;
+    let brute = false;
+    const steps = 260;
+    for (let ix = 0; ix <= steps && !brute; ix++) {
+      const x = A.cx - A.rx + (2 * A.rx * ix) / steps;
+      for (let iy = 0; iy <= steps; iy++) {
+        const y = A.cy - A.ry + (2 * A.ry * iy) / steps;
+        if (inside(A, x, y) && inside(B, x, y)) { brute = true; break; }
+      }
+    }
+    // Skip cases sitting on the boundary, where a finite grid cannot decide.
+    const dx = (B.cx - A.cx) / (A.rx + B.rx), dy = (B.cy - A.cy) / (A.ry + B.ry);
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (Math.abs(d - 1) < 0.02) continue;
+    tested++;
+    if (analytic !== brute) disagreements++;
+  }
+  check('summed-radii ellipse test matches brute force exactly', disagreements === 0,
+    `${tested} random pairs, ${disagreements} disagreements`);
+}
+
+// 24. Eating removes the fish, counts it, scores it and grows the player.
+{
+  const pond = newPond(3);
+  const p = pond.p;
+  // One clearly edible fish placed right on the player.
+  pond.pool[S.E_X] = p[S.P_X]; pond.pool[S.E_Y] = p[S.P_Y];
+  pond.pool[S.E_SIZE] = p[S.P_SIZE] * 0.5; pond.pool[S.E_VX] = 10;
+  pond.pool[S.E_TIER] = T.TIER_PREY_MEDIUM;
+  pond.l[S.L_ENEMY_COUNT] = 1;
+
+  const ate = COL.resolveCollisions(p, pond.pool, pond.l);
+  check('eating removes the fish and counts it',
+    ate === 1 && pond.l[S.L_ENEMY_COUNT] === 0 && p[S.P_EATEN] === 1 && p[S.P_SCORE] > 0,
+    `ate=${ate}, pool=${pond.l[S.L_ENEMY_COUNT]}, eaten=${p[S.P_EATEN]}, score=${p[S.P_SCORE]}`);
+
+  // Growth is eased in, not snapped on.
+  const immediate = p[S.P_SIZE];
+  const input = S.createInputState();
+  for (let n = 0; n < Math.round(1 / C.SIM_DT); n++) stepPlayer(p, input, C.SIM_DT, PHONE.w, PHONE.h);
+  check('growth eases in rather than popping',
+    immediate === 1 && Math.abs(p[S.P_SIZE] - GR.sizeForEaten(1)) < 1e-3,
+    `size ${immediate.toFixed(3)} at the instant of the bite, ` +
+    `${p[S.P_SIZE].toFixed(3)} a second later, target ${GR.sizeForEaten(1).toFixed(3)}`);
+}
+
+// 25. Contact with anything bigger ends the run.
+{
+  const pond = newPond(4);
+  const p = pond.p;
+  pond.pool[S.E_X] = p[S.P_X]; pond.pool[S.E_Y] = p[S.P_Y];
+  pond.pool[S.E_SIZE] = p[S.P_SIZE] * 1.4; pond.pool[S.E_VX] = -10;
+  pond.pool[S.E_TIER] = T.TIER_PREDATOR_SMALL;
+  pond.l[S.L_ENEMY_COUNT] = 1;
+  COL.resolveCollisions(p, pond.pool, pond.l);
+  check('a bigger fish kills on contact', p[S.P_ALIVE] === 0, `alive=${p[S.P_ALIVE]}`);
+}
+
+// 26. You cannot eat your way out of a predator you are already inside.
+{
+  const pond = newPond(5);
+  const p = pond.p;
+  pond.pool[S.E_X] = p[S.P_X]; pond.pool[S.E_Y] = p[S.P_Y];
+  pond.pool[S.E_SIZE] = p[S.P_SIZE] * 0.4; pond.pool[S.E_VX] = 10;
+  pond.pool[S.E_TIER] = T.TIER_PREY_SMALL;
+  pond.pool[S.E_FIELDS + S.E_X] = p[S.P_X]; pond.pool[S.E_FIELDS + S.E_Y] = p[S.P_Y];
+  pond.pool[S.E_FIELDS + S.E_SIZE] = p[S.P_SIZE] * 1.4; pond.pool[S.E_FIELDS + S.E_VX] = -10;
+  pond.pool[S.E_FIELDS + S.E_TIER] = T.TIER_PREDATOR_SMALL;
+  pond.l[S.L_ENEMY_COUNT] = 2;
+  const ate = COL.resolveCollisions(p, pond.pool, pond.l);
+  check('death beats eating in the same step',
+    p[S.P_ALIVE] === 0 && ate === 0 && p[S.P_EATEN] === 0,
+    `alive=${p[S.P_ALIVE]}, ate=${ate}`);
+}
+
+// 27. The growth curve hits both ends exactly and is concave throughout.
+{
+  const first = GR.sizeForEaten(1) / GR.sizeForEaten(0) - 1;
+  const last = GR.sizeForEaten(C.APEX_EATEN) / GR.sizeForEaten(C.APEX_EATEN - 1) - 1;
+  let concave = true;
+  let prevGain = Infinity;
+  for (let n = 1; n <= C.APEX_EATEN; n++) {
+    const gain = GR.sizeForEaten(n) / GR.sizeForEaten(n - 1) - 1;
+    if (gain > prevGain + 1e-12) concave = false;
+    prevGain = gain;
+  }
+  check('growth curve starts at 1 and lands exactly on apex',
+    GR.sizeForEaten(0) === C.PLAYER_START_SIZE && GR.sizeForEaten(C.APEX_EATEN) === C.APEX_SIZE,
+    `${GR.sizeForEaten(0)} at 0 fish, ${GR.sizeForEaten(C.APEX_EATEN)} at ${C.APEX_EATEN}`);
+  check('every bite is worth less than the one before it', concave,
+    `first bite +${(first * 100).toFixed(1)}%, last bite +${(last * 100).toFixed(2)}%, ` +
+    `a ${(first / last).toFixed(0)}x falloff`);
+}
+
+// 28. A bot that swims at the nearest edible fish finishes a run in the target
+//     window. It is immortal and never dodges, so this is a floor on how long
+//     skilled human play takes, not an estimate of it.
+{
+  const runToApex = (seed) => {
+    const pond = newPond(seed);
+    const input = S.createInputState();
+    RUN.startRun(pond.p, pond.pool, pond.l, pond.rng, PHONE.w, PHONE.h);
+    const p = pond.p;
+    let steps = 0;
+    const phaseMinutes = [0, 0, 0];
+    const limit = Math.round((45 * 60) / C.SIM_DT);
+    while (p[S.P_EATEN] < C.APEX_EATEN && steps < limit) {
+      // Lead the target, the way a person does. Holding a finger on a fleeing
+      // fish is a stern chase, and the arrival ramp means a stern chase settles
+      // at a fixed distance and never closes: the bot has to aim where the fish
+      // is going, and pick whichever fish it can intercept soonest.
+      const vmax = C.BASE_MAX_SPEED * Math.pow(p[S.P_SIZE], C.SPEED_SIZE_EXPONENT);
+      let bestT = Infinity, bx = p[S.P_X], by = p[S.P_Y];
+      for (let i = 0; i < pond.l[S.L_ENEMY_COUNT]; i++) {
+        const b = i * S.E_FIELDS;
+        if (pond.pool[b + S.E_SIZE] >= p[S.P_SIZE]) continue;
+        const ex = pond.pool[b + S.E_X], ey = pond.pool[b + S.E_Y], evx = pond.pool[b + S.E_VX];
+        let t = Math.hypot(ex - p[S.P_X], ey - p[S.P_Y]) / vmax;
+        for (let k = 0; k < 3; k++) {
+          t = Math.hypot(ex + evx * t - p[S.P_X], ey - p[S.P_Y]) / vmax;
+        }
+        // Aim past the intercept so the arrival ramp does not stall the chase.
+        const aimX = ex + evx * t * 1.6;
+        if (aimX < -200 || aimX > PHONE.w + 200) continue;
+        if (t < bestT) { bestT = t; bx = aimX; by = ey; }
+      }
+      input[S.I_TARGET_X] = bx; input[S.I_TARGET_Y] = by;
+      input[S.I_ACTIVE] = bestT < Infinity ? 1 : 0;
+
+      stepPlayer(p, input, C.SIM_DT, PHONE.w, PHONE.h);
+      E.stepEnemies(pond.pool, pond.l, p[S.P_SIZE], C.SIM_DT, PHONE.w);
+      E.stepSpawner(pond.pool, pond.l, p, pond.rng, C.SIM_DT, PHONE.w, PHONE.h);
+      COL.resolveCollisions(p, pond.pool, pond.l);
+      p[S.P_ALIVE] = 1; // immortal: this measures feeding rate, not dodging
+      const t = GR.curveProgress(p[S.P_EATEN]);
+      phaseMinutes[t < 1 / 3 ? 0 : t < 2 / 3 ? 1 : 2] += C.SIM_DT / 60;
+      steps++;
+    }
+    return {
+      minutes: (steps * C.SIM_DT) / 60,
+      eaten: p[S.P_EATEN],
+      score: p[S.P_SCORE],
+      phases: phaseMinutes,
+    };
+  };
+
+  const runs = [7, 19, 33, 41, 55].map(runToApex);
+  const times = runs.map((r) => r.minutes);
+  const mean = times.reduce((a, b) => a + b, 0) / times.length;
+  const spread = `${Math.min(...times).toFixed(1)} to ${Math.max(...times).toFixed(1)}`;
+  const phases = [0, 1, 2].map(
+    (i) => runs.reduce((a, r) => a + r.phases[i], 0) / runs.length,
+  );
+  const allFinished = runs.every((r) => r.eaten >= C.APEX_EATEN);
+
+  check('a perfect feeder reaches apex, and not instantly', allFinished && mean > 3,
+    `${runs.length} runs, ${spread} min, mean ${mean.toFixed(1)}, score ${Math.round(runs[0].score)}`);
+  check('run length lands in the 8 to 12 minute target window',
+    mean >= 8 && mean <= 12,
+    `bot floor ${mean.toFixed(1)} min  (terror ${phases[0].toFixed(1)} / ` +
+    `balance ${phases[1].toFixed(1)} / leviathan ${phases[2].toFixed(1)})`);
 }
 
 let failed = 0;

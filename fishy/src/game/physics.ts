@@ -5,16 +5,19 @@ import {
   EDGE_BOUNCE_MIN,
   EDGE_RESTITUTION,
   FLIP_DEADZONE,
+  GROWTH_EASE_SECONDS,
   PLAYER_BASE_LENGTH_PX,
   SPEED_SIZE_EXPONENT,
   TAIL_IDLE_RATE,
   TAIL_WAG_HZ,
 } from './constants';
 import { SILHOUETTE_HALF_H, SILHOUETTE_HALF_W } from './fishGeometry';
+import { sizeForEaten } from './growth';
 import {
   I_ACTIVE,
   I_TARGET_X,
   I_TARGET_Y,
+  P_EATEN,
   P_FACING,
   P_PREV_X,
   P_PREV_Y,
@@ -49,6 +52,17 @@ export function stepPlayer(
   worldH: number,
 ): void {
   'worklet';
+
+  // Ease toward the size the run has earned rather than snapping to it. Uses
+  // the same exponential approach as velocity, so growth is framerate
+  // independent, and collision reads this eased value too: the hitbox is always
+  // exactly the fish on screen.
+  const targetSize = sizeForEaten(p[P_EATEN]);
+  if (p[P_SIZE] !== targetSize) {
+    const ease = 1 - Math.exp((-3 / GROWTH_EASE_SECONDS) * dt);
+    p[P_SIZE] += (targetSize - p[P_SIZE]) * ease;
+  }
+
   const size = p[P_SIZE];
   const length = PLAYER_BASE_LENGTH_PX * size;
   const maxSpeed = BASE_MAX_SPEED * Math.pow(size, SPEED_SIZE_EXPONENT);

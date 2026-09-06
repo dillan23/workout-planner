@@ -137,9 +137,38 @@ export const SPAWN_TARGET_APEX = 15;
  */
 export const SPAWN_MAX_PER_ATTEMPT = 2;
 
-/** Player size counted as apex, used to place a run on the difficulty curve.
- * Phase 4 defines the growth curve that reaches it. */
+// --- Growth -----------------------------------------------------------------
+
+/** Size the player tops out at, roughly 288px nose to tail. */
 export const APEX_SIZE = 12;
+
+/** Fish eaten to reach apex size. */
+export const APEX_EATEN = 175;
+
+/**
+ * Shapes the growth curve: size = APEX_SIZE ^ (progress ^ GROWTH_EXPONENT).
+ * Below 1 the curve is concave, so growth per fish falls away as the run goes
+ * on. At 0.5 the first bite is worth about 21% of the player's size and the
+ * last under 1%.
+ */
+export const GROWTH_EXPONENT = 0.5;
+
+/**
+ * Seconds for the player to visibly grow into a new size, near enough.
+ *
+ * Growth is eased rather than applied instantly for two reasons: a 21% pop on
+ * the first bite is jarring, and instant growth can expand the player into a
+ * predator that was a safe distance away a frame earlier, which is a death the
+ * player could not have avoided. Easing gives them room to swim clear, and
+ * because collision reads the same eased size, the hitbox never disagrees with
+ * what is on screen.
+ */
+export const GROWTH_EASE_SECONDS = 0.25;
+
+/** Points for eating a fish of exactly the player's size. Smaller fish score
+ * proportionally less, so the risk of going after a big one is what pays.
+ * Provisional: the HUD lands in phase 6. */
+export const SCORE_PER_FISH = 100;
 
 /** Clearance, in player body lengths, that a seeded predator must leave around
  * the player's starting position. Edge spawns cannot overlap the player by

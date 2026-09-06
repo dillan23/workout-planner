@@ -38,7 +38,12 @@ export const P_TAIL_PHASE = 8;
 /** 0 until the player has been placed, which needs a screen size and so cannot
  * happen until the first frame on the UI thread. */
 export const P_SPAWNED = 9;
-export const P_FIELDS = 10;
+/** Fish eaten this run. Drives both the growth curve and the difficulty curve. */
+export const P_EATEN = 10;
+export const P_SCORE = 11;
+/** 1 while the run is live. Death sets it to 0 and the player stops simulating. */
+export const P_ALIVE = 12;
+export const P_FIELDS = 13;
 
 // --- Input ------------------------------------------------------------------
 
@@ -112,4 +117,7 @@ export function resetPlayer(p: Float32Array, x: number, y: number, size: number)
   p[P_FACING] = 1;
   p[P_TAIL_PHASE] = 0;
   p[P_SPAWNED] = 1;
+  p[P_EATEN] = 0;
+  p[P_SCORE] = 0;
+  p[P_ALIVE] = 1;
 }

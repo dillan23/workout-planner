@@ -8,15 +8,15 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-Phase 3 of 7 complete: the pond is stocked. Pooled enemy fish spawn off screen,
-swim across in five size tiers, and the mix shifts as the player grows.
+Phase 4 of 7 complete: the game is playable end to end. Eat anything smaller,
+grow on a logarithmic curve, die on contact with anything bigger.
 
 | # | Phase | State |
 |---|-------|-------|
 | 1 | Scaffold, Skia canvas, portrait lock | done |
 | 2 | Fixed timestep loop, drag controls | done |
 | 3 | Enemy spawner, pooling, swimming | done |
-| 4 | Collision, eating, growth, death | not started |
+| 4 | Collision, eating, growth, death | done |
 | 5 | Difficulty curve | not started |
 | 6 | Screens, HUD, persistence | not started |
 | 7 | Audio, haptics, performance pass | not started |
@@ -101,10 +101,34 @@ whose live fish stay contiguous: despawning swaps the last fish into the vacated
 slot, so there is no free list and iteration is a straight walk.
 
 **The hitbox is the drawn body.** `src/game/fishGeometry.ts` describes the body
-as an ellipse in that same unit space, and both the renderer and (from phase 4)
-the collision test read it. Fins and tail sit outside it deliberately: clipping
-a tail is a near miss, not a death, and the two definitions cannot drift apart
-because there is only one.
+as an ellipse in that same unit space, and both the renderer and the collision
+test read it. Fins and tail sit outside it deliberately: clipping a tail is a
+near miss, not a death, and the two definitions cannot drift apart because there
+is only one.
+
+Drawing every fish from one silhouette also makes collision exact rather than
+approximate. Summing two ellipses' radii is normally only an approximation, but
+all body ellipses here share an aspect ratio, so scaling the plane turns both
+into circles whose Minkowski sum is a circle, which maps back to precisely the
+ellipse the test uses. Verified against brute force over 3000 random pairs.
+
+## Tuning
+
+Two curves shape a run, and they are deliberately driven by different things.
+
+**Size** is a concave function of fish eaten: `APEX_SIZE ^ (progress ^
+GROWTH_EXPONENT)`. The first bite is worth 21% of the player's size and the last
+under 1%, a 29x falloff, so early bites are an event and late ones are barely
+perceptible. Both ends are exact by construction rather than tuned to land.
+
+**Difficulty** is keyed on fish eaten, not on size. Size grows fast early, so
+pinning the difficulty curve to it would race the player through Terror and
+Balance in the first ten bites and leave the rest of the run in Leviathan.
+Counting fish gives the three phases roughly equal thirds.
+
+`npm run verify` measures run length with a bot that swims at the nearest fish
+it can intercept. The bot is immortal and never dodges, so its time is a floor
+on skilled human play rather than an estimate of it.
 
 ## Notes on the stack
 
