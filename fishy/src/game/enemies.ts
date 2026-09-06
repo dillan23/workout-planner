@@ -107,7 +107,7 @@ export function spawnAtEdge(
   const playerSize = player[P_SIZE];
   const t = curveProgress(player[P_EATEN]);
   const tier = pickTier(rng, t);
-  const size = playerSize * tierSizeMultiplier(rng, tier);
+  const size = playerSize * tierSizeMultiplier(rng, tier, t);
   const length = size * PLAYER_BASE_LENGTH_PX;
   const halfLength = SILHOUETTE_HALF_W * length;
 
@@ -147,7 +147,7 @@ export function seedPond(
     }
 
     const tier = pickTier(rng, t);
-    const size = playerSize * tierSizeMultiplier(rng, tier);
+    const size = playerSize * tierSizeMultiplier(rng, tier, t);
     const length = size * PLAYER_BASE_LENGTH_PX;
     const y = clampSpawnY(nextFloat(rng) * worldH, length, worldH);
 

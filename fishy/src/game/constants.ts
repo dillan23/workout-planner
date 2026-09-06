@@ -71,6 +71,13 @@ export const COAST_BODY_LENGTHS = 1.5;
  */
 export const ARRIVE_BODY_LENGTHS = 4.0;
 
+/**
+ * Seconds over which raw finger velocity is smoothed before the fish acts on
+ * it. Long enough to reject touch jitter, short enough that changing direction
+ * still feels immediate.
+ */
+export const FINGER_VELOCITY_SMOOTHING = 0.08;
+
 /** Below this fraction of top speed the fish keeps its current heading, so a
  * fish hovering almost still does not strobe between facings. */
 export const FLIP_DEADZONE = 0.06;
@@ -139,11 +146,20 @@ export const SPAWN_MAX_PER_ATTEMPT = 2;
 
 // --- Growth -----------------------------------------------------------------
 
-/** Size the player tops out at, roughly 288px nose to tail. */
-export const APEX_SIZE = 12;
+/**
+ * Size the player tops out at, roughly 216px nose to tail: over half the width
+ * of a phone screen, unmistakably a leviathan, and still leaving room to move.
+ *
+ * Bigger is not better here. The player's own size is half of every collision,
+ * so growing the apex grows the share of the pond that is lethal in mid-run,
+ * measurably: at 12 the worst point of a run had 19% of the water fatal to
+ * stand in, against 14% at 9, for a fish that mostly just crowds the screen.
+ */
+export const APEX_SIZE = 9;
 
-/** Fish eaten to reach apex size. */
-export const APEX_EATEN = 175;
+/** Fish eaten to reach apex size. The spec's window is 150 to 200; the upper
+ * end is what puts run length in range. */
+export const APEX_EATEN = 200;
 
 /**
  * Shapes the growth curve: size = APEX_SIZE ^ (progress ^ GROWTH_EXPONENT).

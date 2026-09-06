@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Gesture } from 'react-native-gesture-handler';
 import type { SharedValue } from 'react-native-reanimated';
 
-import { I_ACTIVE, I_TARGET_X, I_TARGET_Y } from './state';
+import { I_ACTIVE, I_RAW_VX, I_RAW_VY, I_TARGET_X, I_TARGET_Y, I_VX, I_VY } from './state';
 
 /**
  * Drag anywhere to swim.
@@ -24,6 +24,11 @@ export function usePlayerInput(input: SharedValue<Float32Array>) {
           const i = input.value;
           i[I_TARGET_X] = event.x;
           i[I_TARGET_Y] = event.y;
+          // A new touch inherits nothing from the last one.
+          i[I_RAW_VX] = 0;
+          i[I_RAW_VY] = 0;
+          i[I_VX] = 0;
+          i[I_VY] = 0;
           i[I_ACTIVE] = 1;
         })
         .onUpdate((event) => {
@@ -31,11 +36,16 @@ export function usePlayerInput(input: SharedValue<Float32Array>) {
           const i = input.value;
           i[I_TARGET_X] = event.x;
           i[I_TARGET_Y] = event.y;
+          i[I_RAW_VX] = event.velocityX;
+          i[I_RAW_VY] = event.velocityY;
           i[I_ACTIVE] = 1;
         })
         .onFinalize(() => {
           'worklet';
-          input.value[I_ACTIVE] = 0;
+          const i = input.value;
+          i[I_ACTIVE] = 0;
+          i[I_RAW_VX] = 0;
+          i[I_RAW_VY] = 0;
         }),
     [input],
   );

@@ -8,8 +8,8 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-Phase 4 of 7 complete: the game is playable end to end. Eat anything smaller,
-grow on a logarithmic curve, die on contact with anything bigger.
+Phase 5 of 7 complete: the three phases of a run are tuned and measured.
+Terror, Balance, and a Leviathan phase where nothing in the pond can touch you.
 
 | # | Phase | State |
 |---|-------|-------|
@@ -17,7 +17,7 @@ grow on a logarithmic curve, die on contact with anything bigger.
 | 2 | Fixed timestep loop, drag controls | done |
 | 3 | Enemy spawner, pooling, swimming | done |
 | 4 | Collision, eating, growth, death | done |
-| 5 | Difficulty curve | not started |
+| 5 | Difficulty curve | done |
 | 6 | Screens, HUD, persistence | not started |
 | 7 | Audio, haptics, performance pass | not started |
 
@@ -84,6 +84,14 @@ to x = +0.5 (nose). Size is a canvas scale, direction is a negative x-scale, and
 the tail wag is a rotation about the body joint. Nothing is rebuilt per frame,
 and a fish is as crisp at 40x as at 1x.
 
+**Chasing means leading.** The fish's target speed includes the finger's own
+velocity, not just the distance to it. Without that term the closing speed falls
+to zero as the gap shuts, so a fish fleeing faster than you close can never be
+caught from behind: you settle at a fixed distance and trail it forever, which
+is measurable and was real. Dragging along with a fleeing fish now runs it down.
+With the finger held still the term is zero and the arrival is exactly the
+damped one it always was.
+
 **The simulation is plain arithmetic.** State lives in flat `Float32Array`s
 handed to the UI thread once and mutated in place forever, so a frame allocates
 nothing. Real time goes into an accumulator drained in whole 120Hz steps, and
@@ -126,9 +134,27 @@ pinning the difficulty curve to it would race the player through Terror and
 Balance in the first ten bites and leave the rest of the run in Leviathan.
 Counting fish gives the three phases roughly equal thirds.
 
-`npm run verify` measures run length with a bot that swims at the nearest fish
-it can intercept. The bot is immortal and never dodges, so its time is a floor
-on skilled human play rather than an estimate of it.
+Two things shift as a run progresses, and both are keyframed on the phase
+boundaries so a phase starts when it says it does:
+
+- **Spawn weights.** The lethal share of the pond runs 74% at the opening, 36%
+  in mid-run, and exactly 0% once Leviathan begins.
+- **Tier sizes.** Predator bands close toward the player as it grows. A tier is
+  a multiple of the player, so fixed multiples turn a 4.5x predator into a
+  700px wall on a 393px screen by mid-run. Measured, that took the lethal share
+  of the water from 4% to 35% over a run: not a difficulty curve, just the
+  screen filling up. The neutral band slides below 1.0 late in Balance, which
+  is what makes "nothing can eat a Leviathan" literally true rather than true
+  apart from a rounding error.
+
+The lethal share of the *water* holds roughly level across a run even as the
+lethal share of the *pond* falls, because the player is half of every collision
+and keeps growing. Those two effects cancelling is the intended shape.
+
+`npm run verify` measures run length with a bot that steers at an intercept. It
+is immortal, never dodges, and gets none of the finger-velocity help a person
+gets for free, so treat its time as a regression guard on feeding rate rather
+than a prediction of how long a person takes.
 
 ## Notes on the stack
 

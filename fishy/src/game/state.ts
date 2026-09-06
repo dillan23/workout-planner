@@ -51,7 +51,14 @@ export const I_TARGET_X = 0;
 export const I_TARGET_Y = 1;
 /** 1 while a finger is down. */
 export const I_ACTIVE = 2;
-export const I_FIELDS = 3;
+/** Finger velocity as the gesture reports it, in px/s. */
+export const I_RAW_VX = 3;
+export const I_RAW_VY = 4;
+/** The same, smoothed by the simulation. Raw touch velocity is noisy, and this
+ * is fed forward into the fish's desired velocity, so the noise would be felt. */
+export const I_VX = 5;
+export const I_VY = 6;
+export const I_FIELDS = 7;
 
 // --- Enemies ----------------------------------------------------------------
 

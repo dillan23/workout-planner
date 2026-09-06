@@ -4,6 +4,7 @@ import {
   COAST_BODY_LENGTHS,
   EDGE_BOUNCE_MIN,
   EDGE_RESTITUTION,
+  FINGER_VELOCITY_SMOOTHING,
   FLIP_DEADZONE,
   GROWTH_EASE_SECONDS,
   PLAYER_BASE_LENGTH_PX,
@@ -15,8 +16,12 @@ import { SILHOUETTE_HALF_H, SILHOUETTE_HALF_W } from './fishGeometry';
 import { sizeForEaten } from './growth';
 import {
   I_ACTIVE,
+  I_RAW_VX,
+  I_RAW_VY,
   I_TARGET_X,
   I_TARGET_Y,
+  I_VX,
+  I_VY,
   P_EATEN,
   P_FACING,
   P_PREV_X,
@@ -68,18 +73,43 @@ export function stepPlayer(
   const maxSpeed = BASE_MAX_SPEED * Math.pow(size, SPEED_SIZE_EXPONENT);
   const drag = maxSpeed / (COAST_BODY_LENGTHS * length);
 
-  // Velocity the fish would like to have this step.
+  // Smooth the reported finger velocity before acting on it.
+  const smooth = 1 - Math.exp(-dt / FINGER_VELOCITY_SMOOTHING);
+  input[I_VX] += (input[I_RAW_VX] - input[I_VX]) * smooth;
+  input[I_VY] += (input[I_RAW_VY] - input[I_VY]) * smooth;
+
+  // Velocity the fish would like to have this step: keep pace with the finger,
+  // plus a closing term that eases off on arrival.
+  //
+  // The finger term is what makes a chase work. Without it, desired velocity
+  // falls to zero as the gap closes, so a fish fleeing faster than the closing
+  // speed can never be caught from behind: the player settles at a fixed
+  // distance and trails it forever. Matching the drag means sweeping your
+  // finger along with a fleeing fish runs it down, which is what a player
+  // expects that gesture to do. With the finger held still the term is zero and
+  // this is exactly the damped arrival it always was.
   let desiredVx = 0;
   let desiredVy = 0;
   if (input[I_ACTIVE] > 0.5) {
+    desiredVx = input[I_VX];
+    desiredVy = input[I_VY];
+
     const dx = input[I_TARGET_X] - p[P_X];
     const dy = input[I_TARGET_Y] - p[P_Y];
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 1e-4) {
       const arrive = ARRIVE_BODY_LENGTHS * length;
       const speed = maxSpeed * Math.min(1, dist / arrive);
-      desiredVx = (dx / dist) * speed;
-      desiredVy = (dy / dist) * speed;
+      desiredVx += (dx / dist) * speed;
+      desiredVy += (dy / dist) * speed;
+    }
+
+    // The fish is still bound by its top speed however fast the finger moves.
+    const desired = Math.sqrt(desiredVx * desiredVx + desiredVy * desiredVy);
+    if (desired > maxSpeed) {
+      const scale = maxSpeed / desired;
+      desiredVx *= scale;
+      desiredVy *= scale;
     }
   }
 
