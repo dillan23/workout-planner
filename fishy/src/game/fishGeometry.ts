@@ -24,3 +24,9 @@ export const BODY_RY = 0.19;
 
 /** Where the tail hinges onto the body, in unit space. */
 export const TAIL_PIVOT_X = -0.25;
+
+/** Half-extents of the whole silhouette, fins and tail included, in unit space.
+ * Used to keep the player inside the pond; the vertical figure is set by the
+ * dorsal fin, which is the tallest thing on the fish. */
+export const SILHOUETTE_HALF_W = 0.5;
+export const SILHOUETTE_HALF_H = 0.34;

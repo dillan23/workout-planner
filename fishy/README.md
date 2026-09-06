@@ -8,13 +8,13 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-Phase 1 of 7 complete: project scaffold, portrait lock, and the player fish
-rendering to a Skia canvas.
+Phase 2 of 7 complete: the player fish swims. Fixed timestep simulation,
+drag-to-swim controls, interpolated rendering.
 
 | # | Phase | State |
 |---|-------|-------|
 | 1 | Scaffold, Skia canvas, portrait lock | done |
-| 2 | Fixed timestep loop, drag controls | not started |
+| 2 | Fixed timestep loop, drag controls | done |
 | 3 | Enemy spawner, pooling, swimming | not started |
 | 4 | Collision, eating, growth, death | not started |
 | 5 | Difficulty curve | not started |
@@ -52,6 +52,13 @@ npx expo start
 
 and open the app on the phone.
 
+To check the movement model without a device:
+
+```bash
+npm run verify:physics
+npm run typecheck
+```
+
 ## Architecture
 
 ```
@@ -77,6 +84,14 @@ to x = +0.5 (nose). Size is a canvas scale, direction is a negative x-scale, and
 the tail wag is a rotation about the body joint. Nothing is rebuilt per frame,
 and a fish is as crisp at 40x as at 1x.
 
+**The simulation is plain arithmetic.** State lives in flat `Float32Array`s
+handed to the UI thread once and mutated in place forever, so a frame allocates
+nothing. Real time goes into an accumulator drained in whole 120Hz steps, and
+the renderer interpolates between the last two steps, so the physics is
+identical at 24, 60 or 120fps and still looks smooth. Because none of it touches
+Skia, Reanimated or React, `npm run verify:physics` can measure the handling
+headlessly.
+
 **The hitbox is the drawn body.** `src/game/fishGeometry.ts` describes the body
 as an ellipse in that same unit space, and both the renderer and (from phase 4)
 the collision test read it. Fins and tail sit outside it deliberately: clipping
@@ -90,3 +105,7 @@ because there is only one.
   the package is installed, so there is no `babel.config.js` to maintain.
 - Skia's `Canvas` uses the `onSize` shared value rather than `onLayout`, which
   is deprecated under the new architecture.
+- A typed array handed to a shared value is *copied* to the UI thread, not
+  shared. Writing to `someBuffer.value[i]` from the JS thread changes only the
+  JS-side copy and the simulation never sees it. Anything the JS thread needs to
+  tell the loop goes through a scalar shared value.
