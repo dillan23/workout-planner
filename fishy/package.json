@@ -26,8 +26,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "verify:physics": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/game/constants.ts src/game/state.ts src/game/physics.ts src/game/fishGeometry.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node scripts/verifyPhysics.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/game/constants.ts src/game/state.ts src/game/physics.ts src/game/fishGeometry.ts src/game/enemies.ts src/game/tiers.ts src/game/rng.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node scripts/verifySim.js"
   },
   "private": true
 }

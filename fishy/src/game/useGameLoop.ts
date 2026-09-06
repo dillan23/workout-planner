@@ -8,19 +8,24 @@ import {
 } from 'react-native-reanimated';
 
 import { MAX_FRAME_TIME, PLAYER_START_SIZE, SIM_DT } from './constants';
+import { seedPond, stepEnemies, stepSpawner } from './enemies';
 import { stepPlayer } from './physics';
+import { createRng } from './rng';
 import {
+  createEnemyPool,
   createInputState,
   createLoopState,
   createPlayerState,
   L_ACCUMULATOR,
   L_ALPHA,
+  P_SIZE,
   P_SPAWNED,
   resetPlayer,
 } from './state';
 
 export interface GameLoop {
   readonly player: SharedValue<Float32Array>;
+  readonly enemies: SharedValue<Float32Array>;
   readonly input: SharedValue<Float32Array>;
   readonly loop: SharedValue<Float32Array>;
   /** Bumped once per rendered frame, after the simulation has advanced. The
@@ -43,8 +48,10 @@ export interface GameLoop {
  */
 export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
   const player = useSharedValue(useMemo(createPlayerState, []));
+  const enemies = useSharedValue(useMemo(createEnemyPool, []));
   const input = useSharedValue(useMemo(createInputState, []));
   const loop = useSharedValue(useMemo(createLoopState, []));
+  const rng = useSharedValue(useMemo(() => createRng(0x5eed_f15e), []));
   const tick = useSharedValue(0);
 
   // Scalar, because a typed array handed to the UI thread is a *copy*: writing
@@ -61,9 +68,12 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
 
     const p = player.value;
     const l = loop.value;
+    const pool = enemies.value;
+    const seed = rng.value;
 
     if (p[P_SPAWNED] === 0) {
       resetPlayer(p, width * 0.5, height * 0.5, PLAYER_START_SIZE);
+      seedPond(pool, l, p, seed, width, height);
     }
 
     let dt = (frameInfo.timeSincePreviousFrame ?? 0) / 1000;
@@ -81,6 +91,8 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     let accumulator = l[L_ACCUMULATOR] + dt;
     while (accumulator >= SIM_DT) {
       stepPlayer(p, input.value, SIM_DT, width, height);
+      stepEnemies(pool, l, p[P_SIZE], SIM_DT, width);
+      stepSpawner(pool, l, p, seed, SIM_DT, width, height);
       accumulator -= SIM_DT;
     }
     l[L_ACCUMULATOR] = accumulator;
@@ -103,5 +115,5 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     return () => subscription.remove();
   }, [frameCallback, timingReset]);
 
-  return { player, input, loop, tick };
+  return { player, enemies, input, loop, tick };
 }

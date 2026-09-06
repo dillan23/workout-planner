@@ -84,3 +84,67 @@ export const EDGE_BOUNCE_MIN = 0.15;
 
 /** Tail beat rate when drifting, as a fraction of the rate at full speed. */
 export const TAIL_IDLE_RATE = 0.55;
+
+// --- Enemies ----------------------------------------------------------------
+
+/** Hard cap on fish in the pond at once, to protect the frame rate. */
+export const MAX_FISH = 20;
+
+/** How many fish the pond is stocked with before the first frame, so a run
+ * opens on a living pond rather than an empty one. */
+export const SEED_FISH = 9;
+
+/**
+ * Enemy speed as a fraction of the player's top speed, before the size term.
+ * Keeping enemies relative to the player rather than to absolute pixels means
+ * the pond stays as fast as it feels at every size, instead of turning into a
+ * slideshow once the player is large.
+ */
+export const ENEMY_SPEED_FRACTION = 0.38;
+
+/**
+ * Speed falls off with relative size, so small fish dart and big ones lumber.
+ * At these numbers the smallest prey crosses at about 66% of the player's top
+ * speed and the largest predators at about 20%: nothing can ever run you down,
+ * which is what keeps a death felt as a mistake rather than an ambush.
+ */
+export const ENEMY_SPEED_SIZE_EXPONENT = 0.6;
+
+/**
+ * Seconds between spawn attempts, drawn uniformly from this range.
+ *
+ * Attempts are frequent and gated on a population target rather than spaced to
+ * meter the flow directly. A fixed interval does not survive growth: as the
+ * player gets larger the fish are larger and faster relative to the screen, so
+ * they clear the pond sooner, and a rate tuned for the opening leaves apex play
+ * in nearly empty water.
+ */
+export const SPAWN_INTERVAL_MIN = 0.15;
+export const SPAWN_INTERVAL_MAX = 0.3;
+
+/**
+ * How many fish the spawner tries to keep in the pond, at the start of a run
+ * and at apex. It rises so that reaching Leviathan feels like being handed a
+ * feast rather than an empty ocean. MAX_FISH remains the hard ceiling.
+ */
+export const SPAWN_TARGET_START = 11;
+export const SPAWN_TARGET_APEX = 15;
+
+/**
+ * Fish one attempt may place. One per attempt is not enough to hold the target
+ * at apex, where fish cross in under three seconds and sustaining the pond
+ * needs more spawns per second than the interval allows on its own.
+ */
+export const SPAWN_MAX_PER_ATTEMPT = 2;
+
+/** Player size counted as apex, used to place a run on the difficulty curve.
+ * Phase 4 defines the growth curve that reaches it. */
+export const APEX_SIZE = 12;
+
+/** Clearance, in player body lengths, that a seeded predator must leave around
+ * the player's starting position. Edge spawns cannot overlap the player by
+ * construction; the opening stock is the only case that has to be checked. */
+export const SEED_PREDATOR_CLEARANCE = 3.5;
+
+/** Tail beat rate of an enemy relative to the player's, before the size term. */
+export const ENEMY_TAIL_RATE = 0.9;

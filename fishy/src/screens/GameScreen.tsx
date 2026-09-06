@@ -8,7 +8,16 @@ import { PLAYER_BASE_LENGTH_PX, TAIL_WAG_DEG } from '../game/constants';
 import { useGameLoop } from '../game/useGameLoop';
 import { usePlayerInput } from '../game/usePlayerInput';
 import {
+  E_FIELDS,
+  E_PREV_X,
+  E_SIZE,
+  E_TAIL_PHASE,
+  E_TIER,
+  E_VX,
+  E_X,
+  E_Y,
   L_ALPHA,
+  L_ENEMY_COUNT,
   P_FACING,
   P_PREV_X,
   P_PREV_Y,
@@ -48,7 +57,10 @@ export function GameScreen() {
     // tick after the simulation settles is precisely what schedules a redraw.
     const { width: w, height: h } = size.value;
     const p = game.player.value;
-    const alpha = game.loop.value[L_ALPHA];
+    const pool = game.enemies.value;
+    const l = game.loop.value;
+    const alpha = l[L_ALPHA];
+    const enemyCount = l[L_ENEMY_COUNT];
 
     return createPicture((canvas) => {
       if (w <= 0 || h <= 0) {
@@ -58,6 +70,24 @@ export function GameScreen() {
 
       if (p[P_SPAWNED] === 0) {
         return;
+      }
+
+      // Enemies first, so the player always reads on top of the shoal.
+      for (let i = 0; i < enemyCount; i++) {
+        const base = i * E_FIELDS;
+        const ex = pool[base + E_PREV_X] + (pool[base + E_X] - pool[base + E_PREV_X]) * alpha;
+        const vx = pool[base + E_VX];
+        drawFish(
+          canvas,
+          assets.paths,
+          assets.paints,
+          assets.palette.tiers[pool[base + E_TIER]],
+          ex,
+          pool[base + E_Y],
+          pool[base + E_SIZE] * PLAYER_BASE_LENGTH_PX,
+          vx > 0 ? 1 : -1,
+          Math.sin(pool[base + E_TAIL_PHASE]) * TAIL_WAG_DEG,
+        );
       }
 
       // Interpolate between the last two simulation steps so a fixed 120Hz

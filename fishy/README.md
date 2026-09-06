@@ -8,14 +8,14 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-Phase 2 of 7 complete: the player fish swims. Fixed timestep simulation,
-drag-to-swim controls, interpolated rendering.
+Phase 3 of 7 complete: the pond is stocked. Pooled enemy fish spawn off screen,
+swim across in five size tiers, and the mix shifts as the player grows.
 
 | # | Phase | State |
 |---|-------|-------|
 | 1 | Scaffold, Skia canvas, portrait lock | done |
 | 2 | Fixed timestep loop, drag controls | done |
-| 3 | Enemy spawner, pooling, swimming | not started |
+| 3 | Enemy spawner, pooling, swimming | done |
 | 4 | Collision, eating, growth, death | not started |
 | 5 | Difficulty curve | not started |
 | 6 | Screens, HUD, persistence | not started |
@@ -55,7 +55,7 @@ and open the app on the phone.
 To check the movement model without a device:
 
 ```bash
-npm run verify:physics
+npm run verify
 npm run typecheck
 ```
 
@@ -91,6 +91,14 @@ the renderer interpolates between the last two steps, so the physics is
 identical at 24, 60 or 120fps and still looks smooth. Because none of it touches
 Skia, Reanimated or React, `npm run verify:physics` can measure the handling
 headlessly.
+
+**Fish are relative, not absolute.** A fish is never "big", it is bigger *than
+you*: every tier is a multiple of the player's current size, and enemy speed is
+a fraction of the player's top speed divided by that multiple. Small fish dart,
+leviathans lumber, and nothing can ever run the player down, which is what keeps
+a death felt as a mistake rather than an ambush. The pool is one flat buffer
+whose live fish stay contiguous: despawning swaps the last fish into the vacated
+slot, so there is no free list and iteration is a straight walk.
 
 **The hitbox is the drawn body.** `src/game/fishGeometry.ts` describes the body
 as an ellipse in that same unit space, and both the renderer and (from phase 4)

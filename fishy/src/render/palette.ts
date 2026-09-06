@@ -15,6 +15,10 @@ export interface Palette {
   /** Ocean gradient, surface to seabed. */
   readonly ocean: readonly [SkColor, SkColor, SkColor];
   readonly player: FishSkin;
+  /** Indexed by tier. Prey are bright, predators darker and cooler, and the
+   * neutral tier is a flat silver that commits to neither: at 0.95x to 1.05x
+   * the only honest cue is size, and colouring it would give the read away. */
+  readonly tiers: readonly FishSkin[];
   readonly eye: SkColor;
 }
 
@@ -22,6 +26,13 @@ export function makePalette(): Palette {
   return {
     ocean: [Skia.Color('#3AA6DC'), Skia.Color('#11618F'), Skia.Color('#04223B')],
     player: { body: Skia.Color('#FF9138'), fin: Skia.Color('#E86A1C') },
+    tiers: [
+      { body: Skia.Color('#8FE04A'), fin: Skia.Color('#63B82E') }, // prey, small
+      { body: Skia.Color('#FFD24A'), fin: Skia.Color('#E0A81E') }, // prey, medium
+      { body: Skia.Color('#B9C6CF'), fin: Skia.Color('#8FA2AE') }, // neutral
+      { body: Skia.Color('#3E7FA8'), fin: Skia.Color('#2A5B7C') }, // predator, small
+      { body: Skia.Color('#233C63'), fin: Skia.Color('#16294A') }, // predator, large
+    ],
     eye: Skia.Color('#12222E'),
   };
 }

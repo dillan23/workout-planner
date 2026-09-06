@@ -1,3 +1,5 @@
+import { MAX_FISH } from './constants';
+
 /**
  * Game state, laid out as flat Float32Arrays.
  *
@@ -46,13 +48,37 @@ export const I_TARGET_Y = 1;
 export const I_ACTIVE = 2;
 export const I_FIELDS = 3;
 
+// --- Enemies ----------------------------------------------------------------
+
+/**
+ * The enemy pool: one flat buffer of MAX_FISH slots, of which the first
+ * `L_ENEMY_COUNT` are alive. Despawning swaps the last live fish into the freed
+ * slot and decrements the count, so live fish stay contiguous, iteration is a
+ * straight walk, and there is no free list to maintain.
+ */
+export const E_X = 0;
+export const E_PREV_X = 1;
+/** Enemies swim strictly horizontally, so y is fixed for the fish's whole life. */
+export const E_Y = 2;
+/** Signed: the sign is the direction of travel, and the heading is read from it. */
+export const E_VX = 3;
+/** Absolute size, in the same units as the player's, not a multiple of it. */
+export const E_SIZE = 4;
+export const E_TIER = 5;
+export const E_TAIL_PHASE = 6;
+export const E_FIELDS = 7;
+
 // --- Loop -------------------------------------------------------------------
 
 /** Leftover real time not yet consumed by a simulation step, in seconds. */
 export const L_ACCUMULATOR = 0;
 /** Fraction of the way from the previous step to the current one, for the renderer. */
 export const L_ALPHA = 1;
-export const L_FIELDS = 2;
+/** Number of live fish at the front of the enemy pool. */
+export const L_ENEMY_COUNT = 2;
+/** Seconds until the next spawn attempt. */
+export const L_SPAWN_TIMER = 3;
+export const L_FIELDS = 4;
 
 export function createPlayerState(): Float32Array {
   return new Float32Array(P_FIELDS);
@@ -64,6 +90,10 @@ export function createInputState(): Float32Array {
 
 export function createLoopState(): Float32Array {
   return new Float32Array(L_FIELDS);
+}
+
+export function createEnemyPool(): Float32Array {
+  return new Float32Array(MAX_FISH * E_FIELDS);
 }
 
 /**
