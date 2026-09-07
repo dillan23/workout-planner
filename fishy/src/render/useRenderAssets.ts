@@ -2,15 +2,20 @@ import { useMemo } from 'react';
 import { Skia } from '@shopify/react-native-skia';
 
 import { makeOceanPaint } from './background';
+import { makeRayPath } from './parallax';
 import { makeFishPaths, type FishPaths } from './fishPaths';
 import type { FishPaints } from './drawFish';
 import { makePalette, type Palette } from './palette';
+import type { SkPath } from '@shopify/react-native-skia';
 
 export interface RenderAssets {
   readonly paths: FishPaths;
   readonly paints: FishPaints;
   readonly palette: Palette;
   readonly ocean: ReturnType<typeof makeOceanPaint>;
+  /** Reused by the light shafts, which rewind it each frame rather than
+   * building a new path. */
+  readonly rayPath: SkPath;
 }
 
 /**
@@ -33,6 +38,7 @@ export function useRenderAssets(height: number): RenderAssets {
     return { fill, eye };
   }, [palette]);
   const ocean = useMemo(() => makeOceanPaint(height, palette), [height, palette]);
+  const rayPath = useMemo(makeRayPath, []);
 
-  return { paths, paints, palette, ocean };
+  return { paths, paints, palette, ocean, rayPath };
 }

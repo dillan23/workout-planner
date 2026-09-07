@@ -13,6 +13,7 @@ import { stepEnemies, stepSpawner } from './enemies';
 import { stepPlayer } from './physics';
 import { createRng } from './rng';
 import { startRun } from './run';
+import { useFrameMeter, type FrameMeter } from './useFrameMeter';
 import {
   createEnemyPool,
   createInputState,
@@ -52,6 +53,8 @@ export interface GameLoop {
   readonly begin: () => void;
   /** Pause and resume the simulation without disturbing it. */
   readonly setPaused: (paused: boolean) => void;
+  /** Rolling frame rate and worst frame, for the performance pass. */
+  readonly meter: FrameMeter;
 }
 
 /**
@@ -78,6 +81,7 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
   const score = useSharedValue(0);
   const paused = useSharedValue(0);
   const restartRequested = useSharedValue(0);
+  const meter = useFrameMeter();
 
   // Scalar, because a typed array handed to the UI thread is a *copy*: writing
   // to `loop.value[...]` from here would change the JS-side array and the
@@ -106,7 +110,10 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
       score.value = 0;
     }
 
-    let dt = (frameInfo.timeSincePreviousFrame ?? 0) / 1000;
+    const frameMs = frameInfo.timeSincePreviousFrame ?? 0;
+    meter.sample(frameMs);
+
+    let dt = frameMs / 1000;
 
     // First frame after resuming from the background reports the whole time the
     // app spent away. Swallow it so the fish picks up exactly where it left off.
@@ -178,5 +185,17 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     [paused, timingReset],
   );
 
-  return { player, enemies, input, loop, tick, runState, eaten, score, begin, setPaused };
+  return {
+    player,
+    enemies,
+    input,
+    loop,
+    tick,
+    runState,
+    eaten,
+    score,
+    begin,
+    setPaused,
+    meter,
+  };
 }

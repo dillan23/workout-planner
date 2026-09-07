@@ -31,6 +31,7 @@ import {
 import { drawOcean } from '../render/background';
 import { drawFish } from '../render/drawFish';
 import { drawJoystick } from '../render/drawJoystick';
+import { drawParallax } from '../render/parallax';
 import { useRenderAssets } from '../render/useRenderAssets';
 
 /**
@@ -71,12 +72,14 @@ export function GameCanvas({
     const alpha = l[L_ALPHA];
     const enemyCount = l[L_ENEMY_COUNT];
     const attract = game.runState.value === RUN_ATTRACT;
+    const seconds = game.tick.value / 1000;
 
     return createPicture((canvas) => {
       if (w <= 0 || h <= 0) {
         return;
       }
       drawOcean(canvas, assets.ocean);
+      drawParallax(canvas, assets.paints.fill, assets.rayPath, assets.palette, seconds, w, h);
 
       // Enemies first, so the player always reads on top of the shoal.
       for (let i = 0; i < enemyCount; i++) {

@@ -32,6 +32,14 @@ export function Hud({ game, onPause }: { game: GameLoop; onPause: () => void }) 
       <View style={styles.corner}>
         <IconButton glyph="❚❚" label="Pause" onPress={onPause} />
       </View>
+      {__DEV__ ? (
+        <View style={styles.meter} pointerEvents="none">
+          <LiveNumber value={game.meter.fps} style={styles.meterText} />
+          <Text style={styles.meterText}>fps · worst</Text>
+          <LiveNumber value={game.meter.worstMs} style={styles.meterText} />
+          <Text style={styles.meterText}>ms</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -54,4 +62,8 @@ const styles = StyleSheet.create({
   },
   label: { color: theme.inkDim, fontSize: 12 },
   corner: { position: 'absolute', right: 16, top: 0, paddingTop: 8 },
+  // Development builds only: the instrument for the performance pass, not a
+  // feature. Release builds strip the whole block.
+  meter: { position: 'absolute', left: 16, top: 0, paddingTop: 12, flexDirection: 'row', gap: 4 },
+  meterText: { color: theme.inkDim, fontSize: 11, minWidth: 0 },
 });

@@ -23,6 +23,12 @@ export interface Palette {
   /** Floating joystick: a ring where the thumb landed, a knob where it is now. */
   readonly stickRing: SkColor;
   readonly stickKnob: SkColor;
+  /** Background layers. Barely there on purpose: the original's readability
+   * came from an almost empty pond, and anything that reads as a fish silhouette
+   * costs the player a moment deciding whether it can eat them. */
+  readonly bubbleNear: SkColor;
+  readonly bubbleFar: SkColor;
+  readonly lightRay: SkColor;
 }
 
 export function makePalette(): Palette {
@@ -39,5 +45,8 @@ export function makePalette(): Palette {
     eye: Skia.Color('#12222E'),
     stickRing: Skia.Color('rgba(234, 244, 251, 0.22)'),
     stickKnob: Skia.Color('rgba(234, 244, 251, 0.55)'),
+    bubbleNear: Skia.Color('rgba(226, 244, 255, 0.14)'),
+    bubbleFar: Skia.Color('rgba(226, 244, 255, 0.07)'),
+    lightRay: Skia.Color('rgba(186, 226, 255, 0.05)'),
   };
 }

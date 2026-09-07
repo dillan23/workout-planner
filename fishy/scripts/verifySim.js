@@ -902,6 +902,98 @@ const bodyOf = (x, y, len, facing) => ({
     badSetting ?? 'one unreadable field never discards the rest');
 }
 
+// ---------------------------------------------------------------------------
+// Performance
+// ---------------------------------------------------------------------------
+
+// 35. The simulation allocates nothing, checked by watching for collections.
+//     Retained heap proves little, because a collection reclaims garbage before
+//     it can be measured. Garbage collections happening at all is the signal.
+{
+  const { PerformanceObserver } = require('node:perf_hooks');
+  const pond = newPond(101);
+  const input = S.createInputState();
+  RUN.startRun(pond.p, pond.pool, pond.l, pond.rng, PHONE.w, PHONE.h);
+  input[S.I_ACTIVE] = 1;
+  input[S.I_TARGET_X] = PHONE.w * 0.5;
+  input[S.I_TARGET_Y] = PHONE.h * 0.8;
+
+  // Warm up, so the run below measures steady state rather than the optimiser.
+  for (let n = 0; n < 20000; n++) {
+    stepPlayer(pond.p, input, C.SIM_DT, PHONE.w, PHONE.h);
+    E.stepEnemies(pond.pool, pond.l, pond.p[S.P_SIZE], C.SIM_DT, PHONE.w);
+    E.stepSpawner(pond.pool, pond.l, pond.p, pond.rng, C.SIM_DT, PHONE.w, PHONE.h);
+    COL.resolveCollisions(pond.p, pond.pool, pond.l);
+    pond.p[S.P_ALIVE] = 1;
+  }
+
+  let collections = 0;
+  const observer = new PerformanceObserver((list) => { collections += list.getEntries().length; });
+  observer.observe({ entryTypes: ['gc'] });
+  global.gc();
+  collections = 0;
+
+  const STEPS = 400000;
+  const started = process.hrtime.bigint();
+  for (let n = 0; n < STEPS; n++) {
+    stepPlayer(pond.p, input, C.SIM_DT, PHONE.w, PHONE.h);
+    E.stepEnemies(pond.pool, pond.l, pond.p[S.P_SIZE], C.SIM_DT, PHONE.w);
+    E.stepSpawner(pond.pool, pond.l, pond.p, pond.rng, C.SIM_DT, PHONE.w, PHONE.h);
+    COL.resolveCollisions(pond.p, pond.pool, pond.l);
+    pond.p[S.P_ALIVE] = 1;
+  }
+  const elapsedNs = Number(process.hrtime.bigint() - started);
+  observer.disconnect();
+
+  const perStepUs = elapsedNs / STEPS / 1000;
+  check('the simulation runs without triggering a single collection',
+    collections === 0,
+    `${collections} collections across ${(STEPS / 1000).toFixed(0)}k steps ` +
+    `with a full pond`);
+
+  // Two simulation steps fall inside one 60fps frame at SIM_HZ = 120.
+  const perFrameMs = (perStepUs * (C.SIM_HZ / 60)) / 1000;
+  check('two simulation steps fit inside a 60fps frame many times over',
+    perFrameMs < 1,
+    `${perStepUs.toFixed(2)} us per step, ${perFrameMs.toFixed(3)} ms per 60fps frame ` +
+    `of a 16.67 ms budget (desktop node; a phone will be slower)`);
+}
+
+// 36. What one frame actually asks Skia to draw.
+{
+  const { drawFish } = require('../.verify/render/drawFish');
+
+  let ops = 0;
+  const canvas = {
+    save: () => { ops++; }, restore: () => { ops++; },
+    translate: () => { ops++; }, scale: () => { ops++; }, rotate: () => { ops++; },
+    drawPath: () => { ops++; }, drawCircle: () => { ops++; }, drawPaint: () => { ops++; },
+  };
+  const paints = { fill: { setColor: () => {} }, eye: {} };
+  // drawFish holds no runtime Skia dependency of its own, so a counting stub
+  // stands in for the canvas and the path contents do not matter.
+  const paths = { body: 1, tail: 2, dorsal: 3, pectoral: 4 };
+  const skin = { body: 1, fin: 2 };
+
+  drawFish(canvas, paths, paints, skin, 100, 100, 40, 1, 5);
+  const perFish = ops;
+
+  ops = 0;
+  const fishOnScreen = C.MAX_FISH + 1; // a full pond plus the player
+  for (let i = 0; i < fishOnScreen; i++) {
+    drawFish(canvas, paths, paints, skin, 100, 100, 40, 1, 5);
+  }
+  const fishOps = ops;
+
+  check('a fish costs a fixed, small number of draw calls', perFish === 12,
+    `${perFish} calls per fish: 4 paths and an eye, plus the two save/restore ` +
+    `pairs and three transforms that place them`);
+  check('a worst-case frame stays well inside a sane draw budget',
+    fishOps + 30 < 300,
+    `${fishOps} calls for ${fishOnScreen} fish at the pool cap, plus about 30 for ` +
+    `the ocean, light shafts and bubbles`);
+}
+
 let failed = 0;
 for (const r of results) {
   if (!r.pass) failed++;
