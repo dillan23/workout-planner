@@ -1,0 +1,69 @@
+# Builds Fishy for the web and publishes it to GitHub Pages.
+#
+# The game runs in a browser, which is the only way to play it that needs
+# nothing from Apple: no Mac, no developer account, no App Store. Once this has
+# run, the URL below opens on a phone and can be added to the home screen.
+#
+# One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
+name: Fishy on the web
+
+on:
+  push:
+    branches: [claude/fishy-mobile-game-xbuyb4]
+    paths: ['fishy/**', '.github/workflows/fishy-pages.yml']
+  workflow_dispatch:
+
+# A Pages project site is served from /<repo>/, and the exporter bakes asset
+# paths in at build time, so the base URL has to be set here.
+env:
+  FISHY_BASE_URL: /${{ github.event.repository.name }}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let a newer push replace one already queued.
+concurrency:
+  group: fishy-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fishy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fishy/package-lock.json
+
+      - run: npm ci
+
+      # Cheap, and it means a broken build never reaches the phone.
+      - name: Typecheck and verify the simulation
+        run: |
+          npm run typecheck
+          npm run verify
+
+      - run: npm run build:web
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: fishy/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

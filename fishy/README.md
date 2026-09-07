@@ -25,22 +25,35 @@ have landed on top of a full game.
 
 There are three ways to play, in increasing order of setup.
 
-### In a browser (no Apple account, no Mac)
+### In a browser (no Apple account, no Mac, no computer)
 
 The game runs in mobile Safari, and this is the only path that needs nothing
-from Apple. Skia becomes CanvasKit, a WebAssembly build, which is fetched before
-the first frame.
+from Apple. Skia becomes CanvasKit, a WebAssembly build, fetched before the
+first frame.
+
+`.github/workflows/fishy-pages.yml` builds and publishes it to GitHub Pages on
+every push. Enable it once, from a phone if that is all you have:
+
+1. Repository **Settings -> Pages**
+2. **Source: GitHub Actions**
+
+The next push publishes to `https://<user>.github.io/<repo>/`. Open that in
+Safari, then **Share -> Add to Home Screen** for a full-screen launcher with no
+browser chrome.
+
+To build it yourself instead:
 
 ```bash
 cd fishy
 npm install
-npm run build:web     # writes a self-contained dist/, wasm included
+npm run build:web     # self-contained dist/, wasm included
 npx serve dist        # or any static host
 ```
 
-Open the URL on the phone, then Share -> Add to Home Screen for a full-screen,
-chrome-free launcher. Verified end to end in a mobile-sized browser: title,
-play, drag to swim, death, game over, retry.
+Set `FISHY_BASE_URL=/subdir` when the site will not be served from a domain
+root; the exporter bakes asset paths in at build time. Verified end to end in a
+mobile-sized browser, from both a root and a subdirectory: title, play, drag to
+swim, death, game over, retry.
 
 Two known limits in a browser. iOS Safari refuses programmatic volume control,
 so the mute toggle works but the levels are whatever the device is set to; and

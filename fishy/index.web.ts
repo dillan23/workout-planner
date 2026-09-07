@@ -10,16 +10,22 @@ import { LoadSkiaWeb } from '@shopify/react-native-skia/lib/module/web';
  * CanvasKit, a WebAssembly build that has to be fetched and instantiated before
  * anything can touch the Skia API.
  *
- * The app is imported dynamically, and that is load-bearing rather than
- * stylistic: a static import evaluates the whole module graph immediately, and
- * Skia builds its API from the global CanvasKit at module-evaluation time. Any
- * import of the app above this line crashes before the first frame.
+ * The app is pulled in with `require` inside the callback, and both halves of
+ * that matter. Deferring it is load-bearing: Skia builds its API from the
+ * global CanvasKit at module-evaluation time, so any import of the app above
+ * this line crashes before the first frame. Using `require` rather than a
+ * dynamic `import` is what keeps it in one bundle: `import()` makes Metro emit
+ * a separate chunk whose URL is absolute and fixed at build time, which 404s
+ * the moment the site is served from a subdirectory. `require` is lazy at call
+ * time, which is all the deferral this needs.
  */
-// Resolved relative to the page, not the site root, so the build works served
-// from a subdirectory (a GitHub Pages project site, say) as well as from `/`.
-void LoadSkiaWeb({ locateFile: (file: string) => file })
-  .then(async () => {
-    const { default: App } = await import('./App');
+void LoadSkiaWeb({
+  locateFile: (file: string) =>
+    typeof document === 'undefined' ? file : new URL(file, document.baseURI).href,
+})
+  .then(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const App = (require('./App') as { default: React.ComponentType }).default;
     registerRootComponent(App);
   })
   .catch((error: unknown) => {
