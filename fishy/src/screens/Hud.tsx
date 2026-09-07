@@ -21,11 +21,11 @@ export function Hud({ game, onPause }: { game: GameLoop; onPause: () => void }) 
     <View style={[styles.root, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
       <View style={styles.readout} pointerEvents="none">
         <View style={styles.item}>
-          <LiveNumber value={game.eaten} style={styles.value} />
+          <LiveNumber value={game.eaten} style={[styles.value, styles.valueEaten]} />
           <Text style={styles.label}>fish</Text>
         </View>
         <View style={styles.item}>
-          <LiveNumber value={game.score} style={styles.value} />
+          <LiveNumber value={game.score} style={[styles.value, styles.valueScore]} />
           <Text style={styles.label}>score</Text>
         </View>
       </View>
@@ -53,13 +53,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   item: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
+  // Widths are explicit because a TextInput on the web takes a default
+  // intrinsic width of about twenty characters, which pushed the score clean
+  // off the side of the screen. Sized for the largest value each can reach.
   value: {
     color: theme.ink,
     fontSize: 20,
     fontWeight: '700',
     textAlign: 'right',
-    minWidth: 26,
   },
+  valueEaten: { width: 34 },
+  valueScore: { width: 64 },
   label: { color: theme.inkDim, fontSize: 12 },
   corner: { position: 'absolute', right: 16, top: 0, paddingTop: 8 },
   // Development builds only: the instrument for the performance pass, not a

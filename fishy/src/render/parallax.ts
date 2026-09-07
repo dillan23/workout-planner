@@ -65,10 +65,24 @@ function drawBubbleLayer(
 }
 
 /**
- * Light shafts, drawn into a reusable path rather than a new one each frame.
- * `rewind` keeps the allocated storage and empties it, which is the difference
- * between reusing a path and building one.
+ * A light shaft as one unit trapezoid: the top edge spans x = 0 to 1 at y = 0,
+ * and it widens and leans as it descends to y = 1.
+ *
+ * Built once and placed with canvas transforms, exactly as the fish are. The
+ * earlier version rewound and refilled a path every frame, which both used a
+ * deprecated API and did per-frame work for a shape that never actually
+ * changes.
  */
+export function makeRayPath(): SkPath {
+  return Skia.PathBuilder.Make()
+    .moveTo(0, 0)
+    .lineTo(1, 0)
+    .lineTo(3.2, 1)
+    .lineTo(1.6, 1)
+    .close()
+    .detach();
+}
+
 export function drawParallax(
   canvas: SkCanvas,
   paint: SkPaint,
@@ -83,26 +97,16 @@ export function drawParallax(
   for (let i = 0; i < RAYS; i++) {
     const base = spread(i, 31) * width;
     const sway = Math.sin((seconds / RAY_SWAY + spread(i, 32)) * 6.283) * width * 0.09;
-    const topX = base + sway;
     const topWidth = width * (0.06 + spread(i, 33) * 0.05);
-    const spreadOut = topWidth * 3.4;
-
-    rayPath.rewind();
-    rayPath.moveTo(topX, -10);
-    rayPath.lineTo(topX + topWidth, -10);
-    rayPath.lineTo(topX + spreadOut, height);
-    rayPath.lineTo(topX + spreadOut - topWidth * 2.6, height);
-    rayPath.close();
+    canvas.save();
+    canvas.translate(base + sway, -10);
+    canvas.scale(topWidth, height + 20);
     canvas.drawPath(rayPath, paint);
+    canvas.restore();
   }
 
   paint.setColor(palette.bubbleFar);
   drawBubbleLayer(canvas, paint, FAR_BUBBLES, FAR_RISE, 7, 1.4, 1.6, seconds, width, height);
   paint.setColor(palette.bubbleNear);
   drawBubbleLayer(canvas, paint, NEAR_BUBBLES, NEAR_RISE, 3, 2.4, 3.2, seconds, width, height);
-}
-
-/** The one path the light shafts reuse, built once. */
-export function makeRayPath(): SkPath {
-  return Skia.Path.Make();
 }

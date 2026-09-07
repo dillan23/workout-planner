@@ -42,3 +42,6 @@ yarn-error.*
 
 # physics verification build output
 .verify/
+
+# web build output
+dist/

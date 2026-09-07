@@ -23,34 +23,50 @@ have landed on top of a full game.
 
 ## Running it
 
-Skia is not one of the native modules bundled into Expo Go, so **Expo Go cannot
-run this app**. You need a development build. You only have to do this once;
-after that, `npx expo start` behaves exactly as it would with Expo Go.
+There are three ways to play, in increasing order of setup.
+
+### In a browser (no Apple account, no Mac)
+
+The game runs in mobile Safari, and this is the only path that needs nothing
+from Apple. Skia becomes CanvasKit, a WebAssembly build, which is fetched before
+the first frame.
 
 ```bash
 cd fishy
 npm install
+npm run build:web     # writes a self-contained dist/, wasm included
+npx serve dist        # or any static host
 ```
 
-Then either build in the cloud:
+Open the URL on the phone, then Share -> Add to Home Screen for a full-screen,
+chrome-free launcher. Verified end to end in a mobile-sized browser: title,
+play, drag to swim, death, game over, retry.
+
+Two known limits in a browser. iOS Safari refuses programmatic volume control,
+so the mute toggle works but the levels are whatever the device is set to; and
+`expo-haptics` has no web implementation, so the haptics toggle does nothing
+there. Both are platform limits, not missing work.
+
+### On the phone with Expo Go
+
+Worth trying first, since it takes two minutes: install Expo Go from the App
+Store, run `npx expo start`, scan the QR. Whether Skia works inside Expo Go is
+version dependent and best settled by trying it; if the app loads to a red
+screen complaining about a missing native module, it does not, and you want a
+development build.
+
+### With a development build
+
+The full native app, and the only way to get real frame numbers.
 
 ```bash
-npx eas build --profile development --platform android   # or ios
+npx eas build --profile development --platform ios   # builds in the cloud, no Mac needed
 ```
 
-or build locally, if you have the Android SDK / Xcode installed:
-
-```bash
-npx expo run:android    # or: npx expo run:ios
-```
-
-Both install a dev client onto the device. From then on:
-
-```bash
-npx expo start
-```
-
-and open the app on the phone.
+Installing on a physical iPhone needs the device registered to an Apple
+Developer account, which is a paid programme. `npx expo run:ios` builds locally
+instead and needs a Mac with Xcode. Either way you only do it once; after that
+`npx expo start` behaves exactly as it would with Expo Go.
 
 To check the movement model without a device:
 

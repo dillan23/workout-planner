@@ -1,8 +1,9 @@
 {
   "name": "fishy",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "index",
   "dependencies": {
+    "@expo/metro-runtime": "~57.0.15",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@shopify/react-native-skia": "^2.6.2",
     "expo": "~57.0.20",
@@ -11,10 +12,12 @@
     "expo-screen-orientation": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
+    "react-dom": "^19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "^4.5.1",
     "react-native-safe-area-context": "~5.7.0",
+    "react-native-web": "^0.21.2",
     "react-native-worklets": "^0.10.1"
   },
   "devDependencies": {
@@ -28,7 +31,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "verify": "tsc --ignoreConfig --ignoreDeprecations 6.0 src/game/constants.ts src/game/state.ts src/game/physics.ts src/game/fishGeometry.ts src/game/enemies.ts src/game/tiers.ts src/game/rng.ts src/game/growth.ts src/game/collision.ts src/game/run.ts src/render/drawFish.ts --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && tsc --ignoreConfig --ignoreDeprecations 6.0 src/state/persistedData.ts --outDir .verify/state --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node --expose-gc scripts/verifySim.js",
-    "sounds": "node scripts/makePlaceholderSounds.js"
+    "sounds": "node scripts/makePlaceholderSounds.js",
+    "build:web": "expo export --platform web --output-dir dist && node scripts/bundleWasm.js dist"
   },
   "private": true
 }

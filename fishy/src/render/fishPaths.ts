@@ -22,34 +22,38 @@ export interface FishPaths {
 
 export function makeFishPaths(): FishPaths {
   // Body: a teardrop, blunt at the nose and tapering to the tail joint.
-  const body = Skia.Path.Make();
-  body.moveTo(0.5, 0);
-  body.cubicTo(0.34, -0.19, 0.06, -0.22, TAIL_PIVOT_X, -0.1);
-  body.lineTo(TAIL_PIVOT_X, 0.1);
-  body.cubicTo(0.06, 0.22, 0.34, 0.19, 0.5, 0);
-  body.close();
+  const body = Skia.PathBuilder.Make()
+    .moveTo(0.5, 0)
+    .cubicTo(0.34, -0.19, 0.06, -0.22, TAIL_PIVOT_X, -0.1)
+    .lineTo(TAIL_PIVOT_X, 0.1)
+    .cubicTo(0.06, 0.22, 0.34, 0.19, 0.5, 0)
+    .close()
+    .detach();
 
   // Caudal fin, hinged at TAIL_PIVOT_X with a concave trailing edge.
-  const tail = Skia.Path.Make();
-  tail.moveTo(TAIL_PIVOT_X, -0.08);
-  tail.lineTo(-0.5, -0.23);
-  tail.quadTo(-0.38, 0, -0.5, 0.23);
-  tail.lineTo(TAIL_PIVOT_X, 0.08);
-  tail.close();
+  const tail = Skia.PathBuilder.Make()
+    .moveTo(TAIL_PIVOT_X, -0.08)
+    .lineTo(-0.5, -0.23)
+    .quadTo(-0.38, 0, -0.5, 0.23)
+    .lineTo(TAIL_PIVOT_X, 0.08)
+    .close()
+    .detach();
 
   // Dorsal fin, swept back along the top of the body.
-  const dorsal = Skia.Path.Make();
-  dorsal.moveTo(0.1, -0.17);
-  dorsal.quadTo(0.0, -0.34, -0.18, -0.29);
-  dorsal.quadTo(-0.14, -0.19, -0.12, -0.15);
-  dorsal.close();
+  const dorsal = Skia.PathBuilder.Make()
+    .moveTo(0.1, -0.17)
+    .quadTo(0.0, -0.34, -0.18, -0.29)
+    .quadTo(-0.14, -0.19, -0.12, -0.15)
+    .close()
+    .detach();
 
   // Pectoral fin, low on the flank, gives the profile a sense of depth.
-  const pectoral = Skia.Path.Make();
-  pectoral.moveTo(0.16, 0.06);
-  pectoral.quadTo(0.02, 0.26, -0.1, 0.18);
-  pectoral.quadTo(-0.02, 0.12, 0.02, 0.07);
-  pectoral.close();
+  const pectoral = Skia.PathBuilder.Make()
+    .moveTo(0.16, 0.06)
+    .quadTo(0.02, 0.26, -0.1, 0.18)
+    .quadTo(-0.02, 0.12, 0.02, 0.07)
+    .close()
+    .detach();
 
   return { body, tail, dorsal, pectoral };
 }
