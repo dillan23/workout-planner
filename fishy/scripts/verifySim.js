@@ -8,17 +8,22 @@
  * needing to know what actually changed.
  *
  * Run with: npm run verify
+ *
+ * Paths mirror src/ because the compile sets an explicit rootDir. It used to
+ * infer one, which silently changed the output layout the moment a file outside
+ * src/game joined the list, and the stale flat copies left behind kept
+ * resolving for days. The script now wipes its output directory first.
  */
-const C = require('../.verify/constants');
-const S = require('../.verify/state');
-const { stepPlayer } = require('../.verify/physics');
-const G = require('../.verify/fishGeometry');
-const E = require('../.verify/enemies');
-const T = require('../.verify/tiers');
-const RNG = require('../.verify/rng');
-const GR = require('../.verify/growth');
-const COL = require('../.verify/collision');
-const RUN = require('../.verify/run');
+const C = require('../.verify/game/constants');
+const S = require('../.verify/game/state');
+const { stepPlayer } = require('../.verify/game/physics');
+const G = require('../.verify/game/fishGeometry');
+const E = require('../.verify/game/enemies');
+const T = require('../.verify/game/tiers');
+const RNG = require('../.verify/game/rng');
+const GR = require('../.verify/game/growth');
+const COL = require('../.verify/game/collision');
+const RUN = require('../.verify/game/run');
 
 const PHONE = { w: 393, h: 852 };  // iPhone 15 logical portrait
 const ARENA = { w: 40000, h: 40000 }; // unclamped, for measuring pure dynamics
