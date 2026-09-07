@@ -3,8 +3,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { GameScreen } from './src/screens/GameScreen';
+import { Shell } from './src/screens/Shell';
 
 export default function App() {
   useEffect(() => {
@@ -18,8 +19,10 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={styles.root}>
-      <StatusBar hidden />
-      <GameScreen />
+      <SafeAreaProvider>
+        <StatusBar hidden />
+        <Shell />
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

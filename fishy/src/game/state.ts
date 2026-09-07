@@ -58,7 +58,24 @@ export const I_RAW_VY = 4;
  * is fed forward into the fish's desired velocity, so the noise would be felt. */
 export const I_VX = 5;
 export const I_VY = 6;
-export const I_FIELDS = 7;
+/** Which control scheme is driving: CONTROL_DRAG or CONTROL_JOYSTICK. */
+export const I_MODE = 7;
+/** Joystick deflection, as a direction times a magnitude from 0 to 1. */
+export const I_VEC_X = 8;
+export const I_VEC_Y = 9;
+/** Where the floating joystick was placed, and where its knob currently sits.
+ * Kept here so the renderer can draw it from the same buffer the simulation
+ * reads, with no React state in between. */
+export const I_ORIGIN_X = 10;
+export const I_ORIGIN_Y = 11;
+export const I_KNOB_X = 12;
+export const I_KNOB_Y = 13;
+export const I_FIELDS = 14;
+
+/** Drag anywhere: the fish swims toward your finger. */
+export const CONTROL_DRAG = 0;
+/** A joystick that appears wherever you first touch. */
+export const CONTROL_JOYSTICK = 1;
 
 // --- Enemies ----------------------------------------------------------------
 

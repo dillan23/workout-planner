@@ -193,3 +193,12 @@ export const SEED_PREDATOR_CLEARANCE = 3.5;
 
 /** Tail beat rate of an enemy relative to the player's, before the size term. */
 export const ENEMY_TAIL_RATE = 0.9;
+
+// --- Controls ---------------------------------------------------------------
+
+/** Deflection, in px, at which the floating joystick reads as fully pushed. */
+export const JOYSTICK_RADIUS = 62;
+
+/** Deflection below this fraction of the radius reads as no input, so resting a
+ * thumb does not creep the fish along. */
+export const JOYSTICK_DEADZONE = 0.12;

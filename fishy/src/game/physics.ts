@@ -15,11 +15,15 @@ import {
 import { SILHOUETTE_HALF_H, SILHOUETTE_HALF_W } from './fishGeometry';
 import { sizeForEaten } from './growth';
 import {
+  CONTROL_JOYSTICK,
   I_ACTIVE,
+  I_MODE,
   I_RAW_VX,
   I_RAW_VY,
   I_TARGET_X,
   I_TARGET_Y,
+  I_VEC_X,
+  I_VEC_Y,
   I_VX,
   I_VY,
   P_EATEN,
@@ -90,7 +94,13 @@ export function stepPlayer(
   // this is exactly the damped arrival it always was.
   let desiredVx = 0;
   let desiredVy = 0;
-  if (input[I_ACTIVE] > 0.5) {
+  if (input[I_ACTIVE] > 0.5 && input[I_MODE] === CONTROL_JOYSTICK) {
+    // A joystick states the velocity it wants outright, so it needs neither the
+    // arrival ramp nor the finger term: deflection is the throttle, and full
+    // deflection is full speed however close the fish is to anything.
+    desiredVx = input[I_VEC_X] * maxSpeed;
+    desiredVy = input[I_VEC_Y] * maxSpeed;
+  } else if (input[I_ACTIVE] > 0.5) {
     desiredVx = input[I_VX];
     desiredVy = input[I_VY];
 

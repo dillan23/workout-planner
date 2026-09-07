@@ -8,8 +8,8 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-Phase 5 of 7 complete: the three phases of a run are tuned and measured.
-Terror, Balance, and a Leviathan phase where nothing in the pond can touch you.
+Phase 6 of 7 complete: a whole game. Title, play, pause, game over and
+settings, a live HUD, and a high score that survives a restart.
 
 | # | Phase | State |
 |---|-------|-------|
@@ -18,7 +18,7 @@ Terror, Balance, and a Leviathan phase where nothing in the pond can touch you.
 | 3 | Enemy spawner, pooling, swimming | done |
 | 4 | Collision, eating, growth, death | done |
 | 5 | Difficulty curve | done |
-| 6 | Screens, HUD, persistence | not started |
+| 6 | Screens, HUD, persistence | done |
 | 7 | Audio, haptics, performance pass | not started |
 
 ## Running it
@@ -63,10 +63,11 @@ npm run typecheck
 
 ```
 src/
-  game/     simulation: constants, geometry, and (from phase 2) the loop
+  game/     simulation: loop, physics, collision, spawner, entity pool
   render/   Skia draw functions, fish paths, background layers
-  screens/  title, game, gameover, settings
+  screens/  the canvas, and the screens layered over it
   state/    persistence, settings store
+  ui/       buttons, switches, the live HUD counter
   audio/    sound manager
 ```
 
@@ -83,6 +84,18 @@ Skia paths (body, tail, dorsal fin, pectoral fin) spanning x = -0.5 (tail tip)
 to x = +0.5 (nose). Size is a canvas scale, direction is a negative x-scale, and
 the tail wag is a rotation about the body joint. Nothing is rebuilt per frame,
 and a fish is as crisp at 40x as at 1x.
+
+**Nothing unmounts.** There is no navigator: the Skia canvas is mounted once
+and every screen is an overlay above it. The pond swims on behind the title, the
+pause card and the game over screen alike, and starting a run is a handful of
+buffer writes rather than a scene being built, so Retry is instant with nothing
+to flash. React renders only when a person does something, or when the player
+dies; never on a frame.
+
+The HUD is the awkward case, since it has to show live run state without
+rendering. Both counters are driven from shared values into an uneditable
+`TextInput`, so they update on the same thread the simulation runs on, and only
+on the frames where something was actually eaten.
 
 **Chasing means leading.** The fish's target speed includes the finger's own
 velocity, not just the distance to it. Without that term the closing speed falls

@@ -764,6 +764,144 @@ const bodyOf = (x, y, len, facing) => ({
     'caught within 20 s of chasing');
 }
 
+// ---------------------------------------------------------------------------
+// Runs, retries and what the game remembers
+// ---------------------------------------------------------------------------
+
+// 32. Retry wipes every trace of the last run, without allocating a thing.
+{
+  const pond = newPond(77);
+  RUN.startRun(pond.p, pond.pool, pond.l, pond.rng, PHONE.w, PHONE.h);
+
+  // Play a bit: eat some fish, then die.
+  const input = S.createInputState();
+  for (let n = 0; n < 4000; n++) {
+    stepPlayer(pond.p, input, C.SIM_DT, PHONE.w, PHONE.h);
+    E.stepEnemies(pond.pool, pond.l, pond.p[S.P_SIZE], C.SIM_DT, PHONE.w);
+    E.stepSpawner(pond.pool, pond.l, pond.p, pond.rng, C.SIM_DT, PHONE.w, PHONE.h);
+    COL.resolveCollisions(pond.p, pond.pool, pond.l);
+  }
+  pond.p[S.P_EATEN] = 42;
+  pond.p[S.P_SCORE] = 1234;
+  pond.p[S.P_ALIVE] = 0;
+  pond.p[S.P_SIZE] = 5;
+
+  const poolBefore = pond.pool;
+  RUN.startRun(pond.p, pond.pool, pond.l, pond.rng, PHONE.w, PHONE.h);
+
+  check('retry clears the run completely',
+    pond.p[S.P_EATEN] === 0 && pond.p[S.P_SCORE] === 0 && pond.p[S.P_ALIVE] === 1 &&
+    pond.p[S.P_SIZE] === C.PLAYER_START_SIZE && pond.p[S.P_VX] === 0 && pond.p[S.P_VY] === 0 &&
+    pond.l[S.L_ACCUMULATOR] === 0,
+    `eaten=${pond.p[S.P_EATEN]}, score=${pond.p[S.P_SCORE]}, size=${pond.p[S.P_SIZE]}, ` +
+    `alive=${pond.p[S.P_ALIVE]}`);
+  check('retry reuses the same pool rather than building a new one',
+    pond.pool === poolBefore && pond.l[S.L_ENEMY_COUNT] > 0,
+    `same buffer=${pond.pool === poolBefore}, restocked with ${pond.l[S.L_ENEMY_COUNT]} fish`);
+  check('retry puts the player back in open water',
+    pond.p[S.P_X] === PHONE.w / 2 && pond.p[S.P_Y] === PHONE.h / 2,
+    `at (${pond.p[S.P_X]}, ${pond.p[S.P_Y]})`);
+}
+
+// 33. The joystick maps deflection to speed, and is immune to the stern chase.
+{
+  const run = newRun();
+  const vmax = C.BASE_MAX_SPEED;
+
+  const drive = (vx, vy, seconds) => {
+    run.i[S.I_MODE] = S.CONTROL_JOYSTICK;
+    run.i[S.I_ACTIVE] = 1;
+    run.i[S.I_VEC_X] = vx;
+    run.i[S.I_VEC_Y] = vy;
+    for (let n = 0; n < Math.round(seconds / C.SIM_DT); n++) {
+      stepPlayer(run.p, run.i, C.SIM_DT, 40000, 40000);
+    }
+    return Math.hypot(run.p[S.P_VX], run.p[S.P_VY]);
+  };
+
+  const full = drive(1, 0, 3);
+  check('full deflection is full speed', Math.abs(full - vmax) < 2,
+    `${full.toFixed(1)} px/s vs ${vmax}`);
+
+  const half = drive(0.5, 0, 3);
+  check('half deflection is half speed', Math.abs(half - vmax * 0.5) < 3,
+    `${half.toFixed(1)} px/s vs ${(vmax * 0.5).toFixed(0)}`);
+
+  const released = (() => {
+    run.i[S.I_ACTIVE] = 0;
+    for (let n = 0; n < Math.round(4 / C.SIM_DT); n++) {
+      stepPlayer(run.p, run.i, C.SIM_DT, 40000, 40000);
+    }
+    return Math.hypot(run.p[S.P_VX], run.p[S.P_VY]);
+  })();
+  check('letting go of the stick still coasts to a stop', released < 1,
+    `${released.toFixed(3)} px/s after 4 s`);
+
+  // The arrival ramp is what made a stern chase unwinnable on drag. A stick
+  // states its speed outright, so the same chase closes.
+  const chaser = newRun(1, 40, 400);
+  chaser.i[S.I_MODE] = S.CONTROL_JOYSTICK;
+  chaser.i[S.I_ACTIVE] = 1;
+  chaser.i[S.I_VEC_X] = 1;
+  chaser.i[S.I_VEC_Y] = 0;
+  let preyX = 140;
+  const preyVx = C.BASE_MAX_SPEED * 0.55;
+  let caught = false;
+  for (let n = 0; n < Math.round(12 / C.SIM_DT) && !caught; n++) {
+    preyX += preyVx * C.SIM_DT;
+    if (preyX > PHONE.w - 40) { preyX = 140; chaser.p[S.P_X] = 40; chaser.p[S.P_VX] = 0; }
+    stepPlayer(chaser.p, chaser.i, C.SIM_DT, PHONE.w, PHONE.h);
+    caught = COL.bodiesOverlap(chaser.p[S.P_X], chaser.p[S.P_Y], C.PLAYER_BASE_LENGTH_PX,
+      chaser.p[S.P_FACING], preyX, 400, C.PLAYER_BASE_LENGTH_PX * 0.4, 1);
+  }
+  check('a joystick chase closes too', caught, 'caught the same fleeing fish');
+}
+
+// 34. Saved data survives whatever is actually on disk.
+{
+  const ST = require('../.verify/state/persistedData');
+  const cases = [
+    ['nothing stored', null, ST.NO_HIGH_SCORE],
+    ['empty string', '', ST.NO_HIGH_SCORE],
+    ['not json', '{oh no', ST.NO_HIGH_SCORE],
+    ['json but not an object', '42', ST.NO_HIGH_SCORE],
+    ['null', 'null', ST.NO_HIGH_SCORE],
+    ['wrong field types', '{"score":"lots","eaten":null}', { score: 0, eaten: 0 }],
+    ['negative', '{"score":-5,"eaten":-1}', { score: 0, eaten: 0 }],
+    ['NaN encoded', '{"score":null,"eaten":3}', { score: 0, eaten: 3 }],
+    ['a real save', '{"score":8200,"eaten":143}', { score: 8200, eaten: 143 }],
+  ];
+  let bad = null;
+  for (const [name, raw, want] of cases) {
+    const got = ST.parseHighScore(raw);
+    if (got.score !== want.score || got.eaten !== want.eaten) {
+      bad = `${name}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`;
+      break;
+    }
+  }
+  check('a corrupt high score reads as no high score, never a crash', bad === null,
+    bad ?? `${cases.length} stored shapes handled, including junk and partial writes`);
+
+  const settingsCases = [
+    ['nothing stored', null, ST.DEFAULT_SETTINGS],
+    ['garbage', 'not json at all', ST.DEFAULT_SETTINGS],
+    ['one bad field keeps the others',
+      '{"joystick":true,"sound":"yes","haptics":false}',
+      { joystick: true, sound: ST.DEFAULT_SETTINGS.sound, haptics: false }],
+    ['a key from an older build', '{"tilt":true}', ST.DEFAULT_SETTINGS],
+  ];
+  let badSetting = null;
+  for (const [name, raw, want] of settingsCases) {
+    const got = ST.parseSettings(raw);
+    if (got.joystick !== want.joystick || got.sound !== want.sound || got.haptics !== want.haptics) {
+      badSetting = `${name}: got ${JSON.stringify(got)}`;
+      break;
+    }
+  }
+  check('bad settings fall back per key, not wholesale', badSetting === null,
+    badSetting ?? 'one unreadable field never discards the rest');
+}
+
 let failed = 0;
 for (const r of results) {
   if (!r.pass) failed++;

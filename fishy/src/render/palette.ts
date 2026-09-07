@@ -20,6 +20,9 @@ export interface Palette {
    * the only honest cue is size, and colouring it would give the read away. */
   readonly tiers: readonly FishSkin[];
   readonly eye: SkColor;
+  /** Floating joystick: a ring where the thumb landed, a knob where it is now. */
+  readonly stickRing: SkColor;
+  readonly stickKnob: SkColor;
 }
 
 export function makePalette(): Palette {
@@ -34,5 +37,7 @@ export function makePalette(): Palette {
       { body: Skia.Color('#233C63'), fin: Skia.Color('#16294A') }, // predator, large
     ],
     eye: Skia.Color('#12222E'),
+    stickRing: Skia.Color('rgba(234, 244, 251, 0.22)'),
+    stickKnob: Skia.Color('rgba(234, 244, 251, 0.55)'),
   };
 }

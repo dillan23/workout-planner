@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import type { SkSize } from '@shopify/react-native-skia';
 import {
@@ -21,9 +21,17 @@ import {
   L_ACCUMULATOR,
   L_ALPHA,
   P_ALIVE,
+  P_EATEN,
+  P_SCORE,
   P_SIZE,
   P_SPAWNED,
 } from './state';
+
+/** The pond is alive but nobody is playing: the attract state behind the title
+ * and settings screens. */
+export const RUN_ATTRACT = 0;
+export const RUN_PLAYING = 1;
+export const RUN_DEAD = 2;
 
 export interface GameLoop {
   readonly player: SharedValue<Float32Array>;
@@ -34,6 +42,16 @@ export interface GameLoop {
    * renderer derives from this, which guarantees it never draws a half-stepped
    * world. */
   readonly tick: SharedValue<number>;
+  /** RUN_ATTRACT, RUN_PLAYING or RUN_DEAD. */
+  readonly runState: SharedValue<number>;
+  /** Mirrors of the run's counters, written only when they change, so the HUD
+   * updates without the frame loop touching React. */
+  readonly eaten: SharedValue<number>;
+  readonly score: SharedValue<number>;
+  /** Begin a fresh run. Buffer writes only: nothing remounts. */
+  readonly begin: () => void;
+  /** Pause and resume the simulation without disturbing it. */
+  readonly setPaused: (paused: boolean) => void;
 }
 
 /**
@@ -55,6 +73,11 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
   const loop = useSharedValue(useMemo(createLoopState, []));
   const rng = useSharedValue(useMemo(() => createRng(0x5eed_f15e), []));
   const tick = useSharedValue(0);
+  const runState = useSharedValue(RUN_ATTRACT);
+  const eaten = useSharedValue(0);
+  const score = useSharedValue(0);
+  const paused = useSharedValue(0);
+  const restartRequested = useSharedValue(0);
 
   // Scalar, because a typed array handed to the UI thread is a *copy*: writing
   // to `loop.value[...]` from here would change the JS-side array and the
@@ -67,14 +90,20 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     if (width <= 0 || height <= 0) {
       return;
     }
+    if (paused.value === 1) {
+      return;
+    }
 
     const p = player.value;
     const l = loop.value;
     const pool = enemies.value;
     const seed = rng.value;
 
-    if (p[P_SPAWNED] === 0) {
+    if (p[P_SPAWNED] === 0 || restartRequested.value === 1) {
+      restartRequested.value = 0;
       startRun(p, pool, l, seed, width, height);
+      eaten.value = 0;
+      score.value = 0;
     }
 
     let dt = (frameInfo.timeSincePreviousFrame ?? 0) / 1000;
@@ -93,12 +122,23 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     while (accumulator >= SIM_DT) {
       // The pond keeps swimming after a death, so the game over screen has a
       // living backdrop rather than a frozen frame.
-      if (p[P_ALIVE] === 1) {
+      const live = runState.value === RUN_PLAYING && p[P_ALIVE] === 1;
+      if (live) {
         stepPlayer(p, input.value, SIM_DT, width, height);
       }
       stepEnemies(pool, l, p[P_SIZE], SIM_DT, width);
       stepSpawner(pool, l, p, seed, SIM_DT, width, height);
-      resolveCollisions(p, pool, l);
+      if (live) {
+        // Counters are mirrored into shared values only when they move, so the
+        // HUD costs nothing on the frames where nothing was eaten.
+        if (resolveCollisions(p, pool, l) > 0) {
+          eaten.value = p[P_EATEN];
+          score.value = p[P_SCORE];
+        }
+        if (p[P_ALIVE] === 0) {
+          runState.value = RUN_DEAD;
+        }
+      }
       accumulator -= SIM_DT;
     }
     l[L_ACCUMULATOR] = accumulator;
@@ -121,5 +161,22 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     return () => subscription.remove();
   }, [frameCallback, timingReset]);
 
-  return { player, enemies, input, loop, tick };
+  const begin = useCallback(() => {
+    restartRequested.value = 1;
+    runState.value = RUN_PLAYING;
+  }, [restartRequested, runState]);
+
+  const setPaused = useCallback(
+    (next: boolean) => {
+      // Swallow the gap on resume, exactly as backgrounding does, so a paused
+      // game picks up where it left off instead of stepping through the pause.
+      if (!next) {
+        timingReset.value = 1;
+      }
+      paused.value = next ? 1 : 0;
+    },
+    [paused, timingReset],
+  );
+
+  return { player, enemies, input, loop, tick, runState, eaten, score, begin, setPaused };
 }
