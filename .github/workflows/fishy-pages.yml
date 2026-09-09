@@ -58,6 +58,12 @@ jobs:
         with:
           path: fishy/dist
 
+  # Known quirk: re-running an existing run (the "Re-run jobs" button) can leave
+  # this job unable to find the artifact `build` just uploaded, even in the same
+  # attempt, and it fails with "No artifacts named github-pages were found".
+  # That is the Pages deploy API failing to re-index on a repeat attempt, not a
+  # real missing artifact. A genuinely new run (an actual push, or "Run
+  # workflow" under workflow_dispatch) does not hit it.
   deploy:
     needs: build
     runs-on: ubuntu-latest
