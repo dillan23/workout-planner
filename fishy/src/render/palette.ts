@@ -29,6 +29,18 @@ export interface Palette {
   readonly bubbleNear: SkColor;
   readonly bubbleFar: SkColor;
   readonly lightRay: SkColor;
+  /** The seabed at the bottom of the world: sand, a shadow under its ridge line
+   * so it reads as solid rather than a flat stripe, and a couple of silhouette
+   * accents scattered along it. */
+  readonly sand: SkColor;
+  readonly sandShadow: SkColor;
+  readonly rock: SkColor;
+  readonly plant: SkColor;
+  /** Jellyfish are their own family of colour, independent of tier: the tier
+   * palette signals danger by relative size, and a jellyfish is recognised by
+   * silhouette and this translucent colour instead. */
+  readonly jelly: SkColor;
+  readonly jellyDark: SkColor;
 }
 
 export function makePalette(): Palette {
@@ -48,5 +60,11 @@ export function makePalette(): Palette {
     bubbleNear: Skia.Color('rgba(226, 244, 255, 0.14)'),
     bubbleFar: Skia.Color('rgba(226, 244, 255, 0.07)'),
     lightRay: Skia.Color('rgba(186, 226, 255, 0.05)'),
+    sand: Skia.Color('#B79A6B'),
+    sandShadow: Skia.Color('#8C7248'),
+    rock: Skia.Color('#5B5A5E'),
+    plant: Skia.Color('#2F6E4E'),
+    jelly: Skia.Color('rgba(232, 200, 226, 0.68)'),
+    jellyDark: Skia.Color('rgba(190, 150, 186, 0.68)'),
   };
 }

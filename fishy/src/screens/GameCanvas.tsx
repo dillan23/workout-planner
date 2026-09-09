@@ -10,6 +10,7 @@ import { usePlayerInput } from '../game/usePlayerInput';
 import {
   CONTROL_JOYSTICK,
   E_FIELDS,
+  E_KIND,
   E_PREV_X,
   E_SIZE,
   E_TAIL_PHASE,
@@ -17,6 +18,7 @@ import {
   E_VX,
   E_X,
   E_Y,
+  KIND_JELLYFISH,
   L_ALPHA,
   L_ENEMY_COUNT,
   P_FACING,
@@ -28,9 +30,12 @@ import {
   P_X,
   P_Y,
 } from '../game/state';
+import { clampCamera, floorTopYFor, worldHeightFor, worldWidthFor } from '../game/world';
 import { drawOcean } from '../render/background';
 import { drawFish } from '../render/drawFish';
+import { drawJellyfish } from '../render/drawJellyfish';
 import { drawJoystick } from '../render/drawJoystick';
+import { drawOceanFloor } from '../render/oceanFloor';
 import { drawParallax } from '../render/parallax';
 import { useRenderAssets } from '../render/useRenderAssets';
 
@@ -44,6 +49,12 @@ import { useRenderAssets } from '../render/useRenderAssets';
  * The whole frame is one Skia picture rebuilt on the UI thread, derived from
  * the loop's tick, which is bumped only after the simulation has finished
  * advancing. No React state takes part.
+ *
+ * The world is bigger than the screen, so everything that lives in it (the
+ * seabed, every fish, the player) is drawn inside one canvas translate that
+ * the camera controls; the ocean gradient, the parallax bubbles and light
+ * shafts, and the joystick overlay stay outside it; they are ambient or UI,
+ * not things with a position in the world to get right.
  */
 export function GameCanvas({
   game,
@@ -57,7 +68,7 @@ export function GameCanvas({
   scheme: number;
 }) {
   const assets = useRenderAssets(screenHeight);
-  const pan = usePlayerInput(game.input, scheme);
+  const pan = usePlayerInput(game.input, game.loop, scheme);
 
   const picture = useDerivedValue(() => {
     // Reanimated subscribes this picture to every shared value reachable from
@@ -81,10 +92,52 @@ export function GameCanvas({
       drawOcean(canvas, assets.ocean);
       drawParallax(canvas, assets.paints.fill, assets.rayPath, assets.palette, seconds, w, h);
 
+      // Interpolate between the last two simulation steps so a fixed 120Hz
+      // simulation reads as smooth at whatever rate the display runs. The
+      // camera follows this same interpolated point, so it moves exactly as
+      // smoothly as the fish it is centred on.
+      const x = p[P_PREV_X] + (p[P_X] - p[P_PREV_X]) * alpha;
+      const y = p[P_PREV_Y] + (p[P_Y] - p[P_PREV_Y]) * alpha;
+      // The renderer's own camera, tracking this interpolated point rather
+      // than the simulation's raw one, so it moves exactly as smoothly as the
+      // fish it follows. Plain scalars, not the simulation's persisted camera:
+      // this is used once, right here, and never needs to be read back.
+      const worldWidth = worldWidthFor(w);
+      const worldHeight = worldHeightFor(h);
+      const floorTopY = floorTopYFor(worldHeight);
+      const camX = clampCamera(x, w, worldWidth);
+      const camY = clampCamera(y, h, worldHeight);
+
+      canvas.save();
+      canvas.translate(-camX, -camY);
+
+      drawOceanFloor(
+        canvas,
+        assets.paints.fill,
+        assets.floorPaths,
+        assets.palette,
+        worldWidth,
+        worldHeight,
+        floorTopY,
+      );
+
       // Enemies first, so the player always reads on top of the shoal.
       for (let i = 0; i < enemyCount; i++) {
         const base = i * E_FIELDS;
         const ex = pool[base + E_PREV_X] + (pool[base + E_X] - pool[base + E_PREV_X]) * alpha;
+        if (pool[base + E_KIND] === KIND_JELLYFISH) {
+          drawJellyfish(
+            canvas,
+            assets.jellyfishPaths,
+            assets.paints.fill,
+            assets.palette,
+            ex,
+            pool[base + E_Y],
+            pool[base + E_SIZE] * PLAYER_BASE_LENGTH_PX,
+            pool[base + E_TAIL_PHASE],
+          );
+          continue;
+        }
         drawFish(
           canvas,
           assets.paths,
@@ -99,27 +152,24 @@ export function GameCanvas({
       }
 
       // On the title and settings screens the pond swims on without a player.
-      if (attract || p[P_SPAWNED] === 0) {
-        return;
+      if (!attract && p[P_SPAWNED] !== 0) {
+        drawFish(
+          canvas,
+          assets.paths,
+          assets.paints,
+          assets.palette.player,
+          x,
+          y,
+          p[P_SIZE] * PLAYER_BASE_LENGTH_PX,
+          p[P_FACING],
+          Math.sin(p[P_TAIL_PHASE]) * TAIL_WAG_DEG,
+        );
       }
 
-      // Interpolate between the last two simulation steps so a fixed 120Hz
-      // simulation reads as smooth at whatever rate the display runs.
-      const x = p[P_PREV_X] + (p[P_X] - p[P_PREV_X]) * alpha;
-      const y = p[P_PREV_Y] + (p[P_Y] - p[P_PREV_Y]) * alpha;
+      canvas.restore();
 
-      drawFish(
-        canvas,
-        assets.paths,
-        assets.paints,
-        assets.palette.player,
-        x,
-        y,
-        p[P_SIZE] * PLAYER_BASE_LENGTH_PX,
-        p[P_FACING],
-        Math.sin(p[P_TAIL_PHASE]) * TAIL_WAG_DEG,
-      );
-
+      // The joystick is UI, not a thing living in the world: it stays in
+      // screen space, outside the camera's translate.
       if (scheme === CONTROL_JOYSTICK) {
         drawJoystick(canvas, assets.paints.fill, assets.palette, input);
       }

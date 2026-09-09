@@ -20,6 +20,8 @@ import {
   I_VEC_Y,
   I_VX,
   I_VY,
+  L_CAMERA_X,
+  L_CAMERA_Y,
 } from './state';
 
 /**
@@ -30,9 +32,21 @@ import {
  * records what the finger is doing; turning that into movement is the
  * simulation's job.
  *
+ * The world is bigger than the screen, so a touch's screen coordinates are not
+ * the fish's target: they have to be shifted by the camera first. That camera
+ * is read straight out of the loop buffer, already computed by this frame's
+ * simulation step, rather than re-derived here: cheaper, and there is then
+ * only one place that ever computes it. The joystick scheme needs none of
+ * this, since a deflection is a direction and a magnitude with no absolute
+ * position in it at all.
+ *
  * These callbacks are worklets, so a touch never crosses to the JS thread.
  */
-export function usePlayerInput(input: SharedValue<Float32Array>, scheme: number) {
+export function usePlayerInput(
+  input: SharedValue<Float32Array>,
+  loop: SharedValue<Float32Array>,
+  scheme: number,
+) {
   return useMemo(
     () =>
       Gesture.Pan()
@@ -49,8 +63,13 @@ export function usePlayerInput(input: SharedValue<Float32Array>, scheme: number)
           i[I_VY] = 0;
           i[I_VEC_X] = 0;
           i[I_VEC_Y] = 0;
-          i[I_TARGET_X] = event.x;
-          i[I_TARGET_Y] = event.y;
+          if (scheme === CONTROL_DRAG) {
+            const l = loop.value;
+            i[I_TARGET_X] = event.x + l[L_CAMERA_X];
+            i[I_TARGET_Y] = event.y + l[L_CAMERA_Y];
+          }
+          // Origin and knob stay in screen space: the joystick is UI drawn
+          // without the camera's translate, not a thing living in the world.
           i[I_ORIGIN_X] = event.x;
           i[I_ORIGIN_Y] = event.y;
           i[I_KNOB_X] = event.x;
@@ -83,8 +102,9 @@ export function usePlayerInput(input: SharedValue<Float32Array>, scheme: number)
             }
             return;
           }
-          i[I_TARGET_X] = event.x;
-          i[I_TARGET_Y] = event.y;
+          const l = loop.value;
+          i[I_TARGET_X] = event.x + l[L_CAMERA_X];
+          i[I_TARGET_Y] = event.y + l[L_CAMERA_Y];
           i[I_RAW_VX] = event.velocityX;
           i[I_RAW_VY] = event.velocityY;
         })
@@ -97,7 +117,7 @@ export function usePlayerInput(input: SharedValue<Float32Array>, scheme: number)
           i[I_VEC_X] = 0;
           i[I_VEC_Y] = 0;
         }),
-    [input, scheme],
+    [input, loop, scheme],
   );
 }
 

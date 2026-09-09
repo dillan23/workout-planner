@@ -8,8 +8,10 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-All seven phases complete. Sound, haptics, parallax and the performance pass
-have landed on top of a full game.
+All seven original phases are complete, plus a follow-up pass: a bigger,
+scrollable world, an ocean floor, jellyfish, and a fix for controls that had
+grown sluggish at scale. See "The pond is bigger than the screen" and
+"Controls" below.
 
 | # | Phase | State |
 |---|-------|-------|
@@ -20,6 +22,7 @@ have landed on top of a full game.
 | 5 | Difficulty curve | done |
 | 6 | Screens, HUD, persistence | done |
 | 7 | Audio, haptics, performance pass | done |
+| 8 | Scrollable world, floor, jellyfish, controls fix | done |
 
 ## Running it
 
@@ -254,6 +257,57 @@ and keeps growing. Those two effects cancelling is the intended shape.
 is immortal, never dodges, and gets none of the finger-velocity help a person
 gets for free, so treat its time as a regression guard on feeding rate rather
 than a prediction of how long a person takes.
+
+## Controls
+
+`ARRIVE_BODY_LENGTHS` scales with the player's own length, and that stopped
+being safe once a fish could grow past a couple of screen-widths: holding a
+finger a realistic 150 to 250px away, measured, got a size-9 player only 17%
+to 29% of its own top speed. It got worse the bigger the fish, which is
+backwards for a difficulty curve. `ARRIVE_BODY_LENGTHS` moved from 4.0 to 3.0,
+which raises that to 63% at a 200px hold, in exchange for overshoot rising
+from about 7% of the fish's own length to about 20%, a settle wobble rather
+than a snap-back. Both figures scale with body length, so the trade holds at
+every size, not just at apex. `FINGER_VELOCITY_SMOOTHING` also tightened, from
+0.08s to 0.05s, since that term is the main lever for *active* steering: it
+feeds a finger's own speed straight into desired velocity, uncapped by the
+arrival ramp, so a brisk drag reaches top speed at any size the ramp alone
+would not. `npm run verify` carries this as a permanent regression check
+against the real `stepPlayer`, not a re-derived formula.
+
+## The pond is bigger than the screen
+
+The world is 2.6x the screen's width and 1.7x its height (`WORLD_WIDTH_SCREENS`
+/ `WORLD_HEIGHT_SCREENS`), with a camera that follows the player and clamps to
+the world's edges. The top of the world is the surface and never moves, since
+there is nothing to swim up into; only width and the way down to the floor
+needed the extra room.
+
+Two things had to change for this, and both are in `src/game/world.ts`:
+
+- **The player clamps to the world, not the screen.** `stepPlayer` already took
+  its clamp bounds as plain parameters, so the only change was what the caller
+  passes: the world's size instead of the screen's, and the top of the floor
+  band rather than the world's full height, so the fish never overlaps the
+  seabed it is drawn on top of.
+- **Spawning and despawning are relative to the camera's current viewport, not
+  a fixed rectangle at the world's origin.** A fish spawns just off whatever the
+  camera is currently showing, and despawns once it drifts well past that,
+  wherever in the world that viewport happens to be. This is what makes the
+  pond stay populated no matter how far the player swims, rather than only ever
+  near wherever the run began.
+
+World size and camera position are written into the loop buffer's own fields,
+not returned as objects: this codebase's zero-allocation requirement is
+verified (see Performance, above), and a fresh `{x, y}` every simulation step
+would have broken it. The renderer's camera is the one exception, computed as
+plain scalars rather than through the buffer, since it tracks its own
+separately interpolated position and is used once, locally, never read back.
+
+Predator tier bands already close toward the player as it grows (see Tuning,
+above); nothing about that changed. What did change is that a predator's
+*danger* is now judged against the same viewport-relative pond as everything
+else, which the difficulty-curve tests still confirm holds.
 
 ## Notes on the stack
 

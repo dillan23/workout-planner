@@ -87,15 +87,31 @@ export const CONTROL_JOYSTICK = 1;
  */
 export const E_X = 0;
 export const E_PREV_X = 1;
-/** Enemies swim strictly horizontally, so y is fixed for the fish's whole life. */
+/** Current vertical position. Fixed for a swimmer; a jellyfish bobs around
+ * E_BASE_Y, so this still has to be tracked as real state rather than derived
+ * only at render time, since collision needs the actual current position. */
 export const E_Y = 2;
 /** Signed: the sign is the direction of travel, and the heading is read from it. */
 export const E_VX = 3;
 /** Absolute size, in the same units as the player's, not a multiple of it. */
 export const E_SIZE = 4;
 export const E_TIER = 5;
+/** For a swimmer, tail wag phase. For a jellyfish, which has no tail, the same
+ * field carries its bob phase instead: one accumulator, read differently by
+ * kind, rather than a field each kind would otherwise leave unused. */
 export const E_TAIL_PHASE = 6;
-export const E_FIELDS = 7;
+/** KIND_SWIMMER or KIND_JELLYFISH. Independent of E_TIER: kind changes how a
+ * fish moves and looks, tier changes how big and dangerous it is, and a
+ * jellyfish is exactly as dangerous as any other fish its size. */
+export const E_KIND = 7;
+/** A jellyfish's still centre, set once at spawn; E_Y drifts above and below it. */
+export const E_BASE_Y = 8;
+export const E_FIELDS = 9;
+
+/** Swims horizontally at a fixed depth. */
+export const KIND_SWIMMER = 0;
+/** Drifts horizontally while bobbing vertically around E_BASE_Y. */
+export const KIND_JELLYFISH = 1;
 
 // --- Loop -------------------------------------------------------------------
 
@@ -107,7 +123,22 @@ export const L_ALPHA = 1;
 export const L_ENEMY_COUNT = 2;
 /** Seconds until the next spawn attempt. */
 export const L_SPAWN_TIMER = 3;
-export const L_FIELDS = 4;
+/**
+ * The world, and the camera's position within it. Written by `world.ts`'s
+ * functions rather than returned from them: screen size does not change after
+ * launch, so the world's own size only needs computing once, but the camera
+ * changes every simulation step, and a fresh object for that every step is
+ * exactly the allocation this architecture exists to avoid.
+ */
+export const L_WORLD_WIDTH = 4;
+export const L_WORLD_HEIGHT = 5;
+/** Y where the swimmable water ends and the floor band begins; the player is
+ * clamped here, not at L_WORLD_HEIGHT, so it never overlaps the seabed it is
+ * drawn on top of. */
+export const L_FLOOR_TOP_Y = 6;
+export const L_CAMERA_X = 7;
+export const L_CAMERA_Y = 8;
+export const L_FIELDS = 9;
 
 export function createPlayerState(): Float32Array {
   return new Float32Array(P_FIELDS);

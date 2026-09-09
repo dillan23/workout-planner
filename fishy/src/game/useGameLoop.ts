@@ -14,6 +14,7 @@ import { stepPlayer } from './physics';
 import { createRng } from './rng';
 import { startRun } from './run';
 import { useFrameMeter, type FrameMeter } from './useFrameMeter';
+import { computeCamera, computeWorldSize } from './world';
 import {
   createEnemyPool,
   createInputState,
@@ -21,11 +22,17 @@ import {
   createPlayerState,
   L_ACCUMULATOR,
   L_ALPHA,
+  L_CAMERA_X,
+  L_CAMERA_Y,
+  L_FLOOR_TOP_Y,
+  L_WORLD_WIDTH,
   P_ALIVE,
   P_EATEN,
   P_SCORE,
   P_SIZE,
   P_SPAWNED,
+  P_X,
+  P_Y,
 } from './state';
 
 /** The pond is alive but nobody is playing: the attract state behind the title
@@ -102,6 +109,11 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
     const l = loop.value;
     const pool = enemies.value;
     const seed = rng.value;
+    // Written into `l`'s own fields rather than returned: screen size does not
+    // change after launch, so in practice this recomputes the same answer
+    // every frame, but writing it costs nothing and there is then nothing to
+    // keep in sync between here and wherever else reads it.
+    computeWorldSize(l, width, height);
 
     if (p[P_SPAWNED] === 0 || restartRequested.value === 1) {
       restartRequested.value = 0;
@@ -131,10 +143,22 @@ export function useGameLoop(size: SharedValue<SkSize>): GameLoop {
       // living backdrop rather than a frozen frame.
       const live = runState.value === RUN_PLAYING && p[P_ALIVE] === 1;
       if (live) {
-        stepPlayer(p, input.value, SIM_DT, width, height);
+        // The player is clamped to the swimmable world, not the screen: the
+        // floor is a hard bottom, but there is nothing to swim up into, so the
+        // top stays at the surface (y=0) regardless of how tall the world is.
+        stepPlayer(p, input.value, SIM_DT, l[L_WORLD_WIDTH], l[L_FLOOR_TOP_Y]);
       }
-      stepEnemies(pool, l, p[P_SIZE], SIM_DT, width);
-      stepSpawner(pool, l, p, seed, SIM_DT, width, height);
+      // The camera tracks the player's exact (uninterpolated) position each
+      // step, which is all spawn and despawn need: correctness for whatever
+      // instant this step represents, not the sub-pixel smoothness the
+      // renderer wants from its own, separately interpolated camera. Written
+      // into `l` so the input gesture can read it too, without recomputing it
+      // itself from a position it would otherwise have no way to interpolate.
+      computeCamera(l, p[P_X], p[P_Y], width, height);
+      const camX = l[L_CAMERA_X];
+      const camY = l[L_CAMERA_Y];
+      stepEnemies(pool, l, p[P_SIZE], SIM_DT, camX, camX + width);
+      stepSpawner(pool, l, p, seed, SIM_DT, camX, camX + width, camY, camY + height);
       if (live) {
         // Counters are mirrored into shared values only when they move, so the
         // HUD costs nothing on the frames where nothing was eaten.

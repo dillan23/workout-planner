@@ -60,23 +60,30 @@ export const COAST_BODY_LENGTHS = 1.5;
  *
  *     zeta = 0.5 * sqrt(ARRIVE_BODY_LENGTHS / COAST_BODY_LENGTHS)
  *
- * Below zeta = 1 the fish overshoots; at 4x the coast distance it is critically
- * damped and never does. 4.0 puts zeta at 0.82, which overshoots by about 1.5%
- * of the approach: enough that the fish drifts onto the target like a fish
- * rather than a cursor, far too little to flip its heading or cost you a dodge.
+ * The real cost of this number is reach: since it scales with the player's own
+ * length, a big fish only touches top speed once your finger is many body
+ * lengths away, which on a phone screen means never. Measured at 4.0 (the
+ * original, overshoot-free value): a fish at apex size reached only 46% of top
+ * speed on a run at a point 200px out, and as little as 23% holding a finger
+ * steadily 200px ahead, which is what "hard to navigate" actually was.
  *
- * The cost of raising it is that the fish only reaches top speed once your
- * finger is roughly this far away. The floatiness you actually feel on release
- * is COAST_BODY_LENGTHS and is unaffected by this number.
+ * 3.0 was chosen by measuring the trade rather than guessing at it: reach at
+ * apex rises to 63% (running) and 31% (held steady) at 200px, for an overshoot
+ * that grows from ~7% of the fish's own body length to ~20%, a settle wobble
+ * rather than a snap back. Both figures scale with body length, so the
+ * trade-off is the same at every size, not just at apex.
  */
-export const ARRIVE_BODY_LENGTHS = 4.0;
+export const ARRIVE_BODY_LENGTHS = 3.0;
 
 /**
  * Seconds over which raw finger velocity is smoothed before the fish acts on
  * it. Long enough to reject touch jitter, short enough that changing direction
- * still feels immediate.
+ * still feels immediate. Kept short because this is the main lever for active
+ * steering: it feeds a finger's own speed straight into desired velocity,
+ * uncapped by ARRIVE_BODY_LENGTHS, so dragging briskly reaches top speed at any
+ * size where the arrival ramp alone would not.
  */
-export const FINGER_VELOCITY_SMOOTHING = 0.08;
+export const FINGER_VELOCITY_SMOOTHING = 0.05;
 
 /** Below this fraction of top speed the fish keeps its current heading, so a
  * fish hovering almost still does not strobe between facings. */
@@ -202,3 +209,52 @@ export const JOYSTICK_RADIUS = 62;
 /** Deflection below this fraction of the radius reads as no input, so resting a
  * thumb does not creep the fish along. */
 export const JOYSTICK_DEADZONE = 0.12;
+
+// --- World -------------------------------------------------------------------
+
+/**
+ * The pond is bigger than the screen. A camera follows the player and clamps
+ * to the world's edges, so swimming left, right, or down keeps revealing more
+ * water instead of pinning you against the glass.
+ *
+ * Sized as multiples of the screen rather than fixed pixels, so the same
+ * proportions hold on any device. The top of the world is the surface and does
+ * not move: there is nothing to swim up into, so only width and the way down to
+ * the floor need the extra room.
+ */
+export const WORLD_WIDTH_SCREENS = 2.6;
+export const WORLD_HEIGHT_SCREENS = 1.7;
+
+/**
+ * Fraction of the world's height given to the ocean floor, both as the visual
+ * band and as where the player's downward swim actually stops. The player is
+ * clamped to the top of this band, not to the bottom of the world, so the fish
+ * never overlaps the seabed it is drawn on top of.
+ */
+export const FLOOR_BAND_FRACTION = 0.14;
+
+/**
+ * How far past the camera's edge a fish is allowed to travel before the pool
+ * reclaims its slot. Despawn is relative to the current viewport, not the
+ * world, since a fish is only worth keeping alive while it could plausibly
+ * still swim into view. The margin exists so a camera pan does not scrub a
+ * fish out the instant it crosses the edge of what happens to be visible.
+ */
+export const DESPAWN_VIEWPORT_MARGIN_PX = 160;
+
+// --- Jellyfish ---------------------------------------------------------------
+
+/**
+ * Chance that a spawned fish is a jellyfish rather than an ordinary swimmer,
+ * applied after its size tier is chosen. Kind and tier are independent: a
+ * jellyfish is exactly as dangerous as any other fish of its size, and reads
+ * differently on screen because it drifts instead of swimming.
+ */
+export const JELLYFISH_CHANCE = 0.16;
+
+/** Bobbing rate, in cycles per second. Slow and languid, unlike a fish's tail
+ * beat, which is most of what sells "this is not a fish." */
+export const JELLYFISH_BOB_HZ = 0.18;
+
+/** Bob amplitude, as a fraction of the jellyfish's own length. */
+export const JELLYFISH_BOB_AMPLITUDE = 0.35;

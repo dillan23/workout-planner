@@ -4,12 +4,16 @@ import { Skia } from '@shopify/react-native-skia';
 import { makeOceanPaint } from './background';
 import { makeRayPath } from './parallax';
 import { makeFishPaths, type FishPaths } from './fishPaths';
+import { makeJellyfishPaths, type JellyfishPaths } from './jellyfishPaths';
+import { makeOceanFloorPaths, type OceanFloorPaths } from './oceanFloor';
 import type { FishPaints } from './drawFish';
 import { makePalette, type Palette } from './palette';
 import type { SkPath } from '@shopify/react-native-skia';
 
 export interface RenderAssets {
   readonly paths: FishPaths;
+  readonly jellyfishPaths: JellyfishPaths;
+  readonly floorPaths: OceanFloorPaths;
   readonly paints: FishPaints;
   readonly palette: Palette;
   readonly ocean: ReturnType<typeof makeOceanPaint>;
@@ -29,6 +33,8 @@ export interface RenderAssets {
 export function useRenderAssets(height: number): RenderAssets {
   const palette = useMemo(makePalette, []);
   const paths = useMemo(makeFishPaths, []);
+  const jellyfishPaths = useMemo(makeJellyfishPaths, []);
+  const floorPaths = useMemo(makeOceanFloorPaths, []);
   const paints = useMemo<FishPaints>(() => {
     const fill = Skia.Paint();
     fill.setAntiAlias(true);
@@ -40,5 +46,5 @@ export function useRenderAssets(height: number): RenderAssets {
   const ocean = useMemo(() => makeOceanPaint(height, palette), [height, palette]);
   const rayPath = useMemo(makeRayPath, []);
 
-  return { paths, paints, palette, ocean, rayPath };
+  return { paths, jellyfishPaths, floorPaths, paints, palette, ocean, rayPath };
 }

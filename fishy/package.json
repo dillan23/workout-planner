@@ -30,7 +30,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "verify": "node -e \"require('fs').rmSync('.verify',{recursive:true,force:true})\" && tsc --ignoreConfig --ignoreDeprecations 6.0 src/game/constants.ts src/game/state.ts src/game/physics.ts src/game/fishGeometry.ts src/game/enemies.ts src/game/tiers.ts src/game/rng.ts src/game/growth.ts src/game/collision.ts src/game/run.ts src/render/drawFish.ts src/state/persistedData.ts --rootDir src --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node --expose-gc scripts/verifySim.js",
+    "verify": "node -e \"require('fs').rmSync('.verify',{recursive:true,force:true})\" && tsc --ignoreConfig --ignoreDeprecations 6.0 src/game/constants.ts src/game/state.ts src/game/physics.ts src/game/fishGeometry.ts src/game/enemies.ts src/game/tiers.ts src/game/rng.ts src/game/growth.ts src/game/collision.ts src/game/run.ts src/game/world.ts src/render/drawFish.ts src/state/persistedData.ts --rootDir src --outDir .verify --module commonjs --target es2020 --moduleResolution node --skipLibCheck && node --expose-gc scripts/verifySim.js",
     "sounds": "node scripts/makePlaceholderSounds.js",
     "build:web": "expo export --platform web --output-dir dist && node scripts/finishWebBuild.js dist"
   },
