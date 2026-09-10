@@ -13,8 +13,16 @@ export interface PersistedSettings {
   readonly haptics: boolean;
 }
 
+/**
+ * The joystick is the default scheme. Drag-to-follow is the more elegant of the
+ * two on paper and the harder one to actually steer: the fish chases a point
+ * your own thumb is sitting on top of, so the thing you are aiming at is the
+ * thing you cannot see. A stick separates the two, and it states a direction
+ * outright instead of inferring one from a distance, which is why it is the one
+ * that holds up as the fish gets big.
+ */
 export const DEFAULT_SETTINGS: PersistedSettings = {
-  joystick: false,
+  joystick: true,
   sound: true,
   haptics: true,
 };

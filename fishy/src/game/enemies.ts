@@ -70,9 +70,14 @@ function pickKind(rng: Uint32Array): number {
 /**
  * Write one fish into a pool slot.
  *
- * Speed is derived from the player's top speed and the fish's size relative to
- * the player, so small fish are quick and large ones are slow, and neither ever
- * outruns the player.
+ * Speed is derived from the player's *opening* top speed and the fish's size
+ * relative to the player, so small fish are quick and large ones are slow, and
+ * neither ever outruns the player at any size.
+ *
+ * The reference is BASE_MAX_SPEED, not the player's current top speed, because
+ * the player now gets slower as it grows (SPEED_SIZE_EXPONENT). Scaling the
+ * pond off the player's current speed would cancel that exactly and leave the
+ * relative pace of a run flat from first bite to last.
  */
 function writeFish(
   pool: Float32Array,
@@ -88,10 +93,9 @@ function writeFish(
 ): void {
   'worklet';
   const base = slot * E_FIELDS;
-  const playerMaxSpeed = BASE_MAX_SPEED * Math.pow(playerSize, SPEED_SIZE_EXPONENT);
   const relative = size / playerSize;
   const speed =
-    (playerMaxSpeed * ENEMY_SPEED_FRACTION) / Math.pow(relative, ENEMY_SPEED_SIZE_EXPONENT);
+    (BASE_MAX_SPEED * ENEMY_SPEED_FRACTION) / Math.pow(relative, ENEMY_SPEED_SIZE_EXPONENT);
 
   pool[base + E_X] = x;
   pool[base + E_PREV_X] = x;

@@ -34,15 +34,34 @@ export const MAX_FRAME_TIME = 0.25;
 
 // --- Movement ---------------------------------------------------------------
 
-/** Top speed in px/s at size 1.0. */
-export const BASE_MAX_SPEED = 270;
+/**
+ * Top speed in px/s at size 1.0, which is now also the fastest the player is
+ * ever going to be: see SPEED_SIZE_EXPONENT.
+ */
+export const BASE_MAX_SPEED = 340;
 
 /**
- * Speed grows sublinearly with size. A leviathan is faster in absolute terms
- * but slower in body lengths per second, which is what makes big fish read as
- * heavy and menacing rather than as a bigger, twitchier player.
+ * Speed *falls* with size. A minnow is quick and slippery, a leviathan is a
+ * slow-moving wall, and the run is the arc between them.
+ *
+ * This is the opposite of the obvious choice, and it is deliberate. Growth is
+ * the only thing that changes over a run, so it has to be the thing that
+ * changes how the game plays; a player who is simply better at everything by
+ * the end has no arc. Trading speed for size gives the growth a cost to weigh
+ * against its reward, and it matches what the fish looks like: nothing that
+ * long should dart.
+ *
+ * At -0.22 the player tops out at 340 px/s at size 1 and 210 px/s at apex, so
+ * a leviathan is a little under two thirds as fast in a straight line while
+ * being nine times as long: from about 14 body lengths a second to about one.
+ * That is where the "heavy" comes from; it is felt as agility, not as px/s.
+ *
+ * The pond does not follow the player down, because enemy speeds are pinned to
+ * BASE_MAX_SPEED rather than to the player's current speed (see
+ * ENEMY_SPEED_FRACTION). Were they relative, this exponent would cancel out
+ * and growth would change nothing at all.
  */
-export const SPEED_SIZE_EXPONENT = 0.35;
+export const SPEED_SIZE_EXPONENT = -0.22;
 
 /**
  * How far the fish coasts, in body lengths, after you lift your finger at full
@@ -50,6 +69,25 @@ export const SPEED_SIZE_EXPONENT = 0.35;
  * more drifty fish, lower it for tighter control.
  */
 export const COAST_BODY_LENGTHS = 1.5;
+
+/**
+ * Ceiling on how long the fish may take to answer the controls, in seconds
+ * (one time constant of the velocity approach).
+ *
+ * A coast measured in body lengths keeps the handling identical at every size,
+ * which is the right instinct and the wrong result at the top of the curve: the
+ * time that coast takes grows with length and with the loss of speed, and at
+ * apex it works out at about 1.5 seconds to reach a new heading. That is not
+ * "heavy", it is "broken", and it is most of what made a big fish miserable to
+ * steer.
+ *
+ * So the coast is capped in time rather than in distance. Below about size 3
+ * nothing changes and the body-length rule holds exactly; above it the fish
+ * keeps answering within this bound, and its coast quietly shortens in body
+ * lengths instead. Weight you can steer reads as weight; weight you cannot
+ * reads as lag.
+ */
+export const MAX_COAST_SECONDS = 0.45;
 
 /**
  * Distance from the touch point, in body lengths, over which the fish eases off
@@ -74,6 +112,24 @@ export const COAST_BODY_LENGTHS = 1.5;
  * trade-off is the same at every size, not just at apex.
  */
 export const ARRIVE_BODY_LENGTHS = 3.0;
+
+/**
+ * Ceiling on the arrival distance, in px, whatever the body-length rule asks
+ * for.
+ *
+ * Same disease as MAX_COAST_SECONDS, in the other half of the control law. At
+ * apex the body-length rule wants to start easing off 648px from your finger,
+ * which is wider than the phone: the fish spends the entire screen on the ramp
+ * and never once commits to top speed. Capping the ramp at a distance that fits
+ * on a screen is what makes the drag scheme reach full speed at any size.
+ *
+ * The cap costs damping, since the two numbers together set the damping ratio,
+ * but far less than it looks: with the coast capped in time as well, the ratio
+ * at apex works out at about 0.49 against 0.71 at size 1, so the overshoot goes
+ * from a few percent to about 17% of the ramp. On a fish that long, that is a
+ * settle, not a lurch.
+ */
+export const ARRIVE_MAX_PX = 90;
 
 /**
  * Seconds over which raw finger velocity is smoothed before the fish acts on
@@ -109,20 +165,33 @@ export const MAX_FISH = 20;
 export const SEED_FISH = 9;
 
 /**
- * Enemy speed as a fraction of the player's top speed, before the size term.
- * Keeping enemies relative to the player rather than to absolute pixels means
- * the pond stays as fast as it feels at every size, instead of turning into a
- * slideshow once the player is large.
+ * Enemy speed as a fraction of the player's *opening* top speed, before the
+ * size term.
+ *
+ * Pinned to BASE_MAX_SPEED, not to whatever the player's speed happens to be
+ * right now, and that distinction is the whole point. Scaling enemies off the
+ * player's current speed cancels SPEED_SIZE_EXPONENT exactly: the pond would
+ * slow down in perfect step with the player and growth would change nothing
+ * anyone could feel. Holding the pond still and letting the player fall through
+ * it is what turns growth into a trade.
  */
-export const ENEMY_SPEED_FRACTION = 0.38;
+export const ENEMY_SPEED_FRACTION = 0.3;
 
 /**
  * Speed falls off with relative size, so small fish dart and big ones lumber.
- * At these numbers the smallest prey crosses at about 66% of the player's top
- * speed and the largest predators at about 20%: nothing can ever run you down,
- * which is what keeps a death felt as a mistake rather than an ambush.
+ *
+ * At these numbers the fastest thing in the pond is small prey, at about 166
+ * px/s whatever stage the run is at, and the largest predators lumber at about
+ * 55. Against a starting player that is a two-to-one speed advantage over the
+ * quickest fish on screen and six-to-one over the biggest, which is what buys a
+ * beginner room to make mistakes. Against a player at apex the same fish is
+ * only 1.27x slower.
+ *
+ * The invariant survives the change: nothing outswims the player at any size,
+ * so a death is still a misjudged gap rather than something running you down.
+ * It just stops being comfortable.
  */
-export const ENEMY_SPEED_SIZE_EXPONENT = 0.6;
+export const ENEMY_SPEED_SIZE_EXPONENT = 0.45;
 
 /**
  * Seconds between spawn attempts, drawn uniformly from this range.
@@ -209,6 +278,19 @@ export const JOYSTICK_RADIUS = 62;
 /** Deflection below this fraction of the radius reads as no input, so resting a
  * thumb does not creep the fish along. */
 export const JOYSTICK_DEADZONE = 0.12;
+
+/**
+ * Where the resting joystick sits when nothing is touching the screen, as a
+ * fraction of the screen and as an inset from the bottom in px.
+ *
+ * The stick still floats: it materialises wherever the thumb actually lands,
+ * anywhere on the screen. This is only the hint that says the stick is there at
+ * all, which a control that appears solely on contact otherwise never tells
+ * anybody. Centred rather than tucked into a corner precisely because it is not
+ * a fixed control and should not claim to be.
+ */
+export const JOYSTICK_HOME_X_FRACTION = 0.5;
+export const JOYSTICK_HOME_BOTTOM_PX = 132;
 
 // --- World -------------------------------------------------------------------
 

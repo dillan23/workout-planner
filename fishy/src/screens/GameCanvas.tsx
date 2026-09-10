@@ -169,9 +169,11 @@ export function GameCanvas({
       canvas.restore();
 
       // The joystick is UI, not a thing living in the world: it stays in
-      // screen space, outside the camera's translate.
-      if (scheme === CONTROL_JOYSTICK) {
-        drawJoystick(canvas, assets.paints.fill, assets.palette, input);
+      // screen space, outside the camera's translate. Not drawn on the title
+      // and settings screens, where its resting hint would sit under a menu
+      // and point at a control nothing is listening to yet.
+      if (scheme === CONTROL_JOYSTICK && !attract) {
+        drawJoystick(canvas, assets.paints.fill, assets.palette, input, w, h);
       }
     }, size.value);
   });

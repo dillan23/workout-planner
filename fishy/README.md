@@ -8,10 +8,11 @@ React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
 
 ## Status
 
-All seven original phases are complete, plus a follow-up pass: a bigger,
-scrollable world, an ocean floor, jellyfish, and a fix for controls that had
-grown sluggish at scale. See "The pond is bigger than the screen" and
-"Controls" below.
+All seven original phases are complete, plus two follow-up passes: a bigger,
+scrollable world with an ocean floor and jellyfish, then a controls overhaul
+that made the joystick the default and turned growth into a trade — the player
+now gets *slower* as it gets bigger. See "The pond is bigger than the screen"
+and "Controls" below.
 
 | # | Phase | State |
 |---|-------|-------|
@@ -22,7 +23,8 @@ grown sluggish at scale. See "The pond is bigger than the screen" and
 | 5 | Difficulty curve | done |
 | 6 | Screens, HUD, persistence | done |
 | 7 | Audio, haptics, performance pass | done |
-| 8 | Scrollable world, floor, jellyfish, controls fix | done |
+| 8 | Scrollable world, floor, jellyfish | done |
+| 9 | Joystick by default, speed-vs-size trade, response caps | done |
 
 ## Running it
 
@@ -253,6 +255,11 @@ The lethal share of the *water* holds roughly level across a run even as the
 lethal share of the *pond* falls, because the player is half of every collision
 and keeps growing. Those two effects cancelling is the intended shape.
 
+A third curve runs underneath both: **speed falls as size rises**, so the pond
+gets no more dangerous while the player gets steadily less able to dart out of
+it. That one lives in Controls, below, because it is felt as handling rather
+than as difficulty.
+
 `npm run verify` measures run length with a bot that steers at an intercept. It
 is immortal, never dodges, and gets none of the finger-velocity help a person
 gets for free, so treat its time as a regression guard on feeding rate rather
@@ -274,6 +281,56 @@ feeds a finger's own speed straight into desired velocity, uncapped by the
 arrival ramp, so a brisk drag reaches top speed at any size the ramp alone
 would not. `npm run verify` carries this as a permanent regression check
 against the real `stepPlayer`, not a re-derived formula.
+
+That was not enough, and the second pass is the one that mattered.
+
+**The joystick is the default now.** Drag-to-follow is the more elegant scheme
+on paper and the harder one to actually steer, for a reason no amount of tuning
+fixes: the fish chases a point your own thumb is sitting on top of, so the thing
+you are aiming at is the thing you cannot see. A stick separates the two and
+states a direction outright instead of inferring one from a distance. It also
+draws itself at rest, faintly, near the bottom of the screen — a control that
+only exists on contact is invisible until you have already guessed it is there.
+The stick still floats: that resting position is a hint, not a hitbox, and the
+real stick appears wherever the thumb actually lands.
+
+**Both halves of the control law are now capped in absolute terms.** Scaling
+everything off body length keeps handling identical at every size, which is the
+right instinct and the wrong result at the top of the curve:
+
+- `ARRIVE_MAX_PX` (90) caps the arrival ramp. At apex the body-length rule wants
+  to start easing off 648px from your finger — wider than the phone — so the
+  fish spent the whole screen on the ramp and never committed to top speed.
+  Measured reach at a realistic 200px drag went from 63% of top speed at apex to
+  96%, and 100% at size 1.
+- `MAX_COAST_SECONDS` (0.45) caps the coast in *time* rather than distance. The
+  time a body-length coast takes grows with length, and at apex it worked out at
+  about 1.5 seconds to answer the stick. That is not weight, it is lag. Below
+  about size 3 the cap never binds and the body-length rule is exact; above it
+  the coast quietly shortens in body lengths instead.
+
+**Growth is a trade, not a straight upgrade.** `SPEED_SIZE_EXPONENT` went from
++0.35 to **-0.22**: the player is *fastest at size 1* and slowest at apex, 340
+px/s down to 210. Since the fish is nine times as long by then, agility falls
+from about 14 body lengths a second to about one. A minnow is quick and
+slippery; a leviathan is a slow-moving wall.
+
+This only works because enemy speeds are pinned to `BASE_MAX_SPEED` rather than
+to the player's *current* top speed. Scaling the pond off the player cancels the
+exponent exactly — the whole pond would slow down in step and growth would
+change nothing anyone could feel. Holding the pond still and letting the player
+fall through it is what turns the size curve into something you weigh:
+
+| | fastest fish | player | advantage |
+|---|---|---|---|
+| size 1 | 166 px/s | 340 px/s | 2.05x |
+| apex | 166 px/s | 210 px/s | 1.27x |
+
+The old invariant survives: nothing outswims the player at any size, so a death
+is still a misjudged gap rather than something running you down. It just stops
+being comfortable. `npm run verify` checks that against the player at *apex*,
+where it is now a real constraint on how far `SPEED_SIZE_EXPONENT` may fall,
+rather than something the old relative-speed model gave away for free.
 
 ## The pond is bigger than the screen
 

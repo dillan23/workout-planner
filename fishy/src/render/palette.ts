@@ -23,6 +23,10 @@ export interface Palette {
   /** Floating joystick: a ring where the thumb landed, a knob where it is now. */
   readonly stickRing: SkColor;
   readonly stickKnob: SkColor;
+  /** The same stick at rest, before anything has been touched. Fainter, because
+   * it is a hint that the control exists rather than a control being used. */
+  readonly stickRingIdle: SkColor;
+  readonly stickKnobIdle: SkColor;
   /** Background layers. Barely there on purpose: the original's readability
    * came from an almost empty pond, and anything that reads as a fish silhouette
    * costs the player a moment deciding whether it can eat them. */
@@ -57,6 +61,8 @@ export function makePalette(): Palette {
     eye: Skia.Color('#12222E'),
     stickRing: Skia.Color('rgba(234, 244, 251, 0.22)'),
     stickKnob: Skia.Color('rgba(234, 244, 251, 0.55)'),
+    stickRingIdle: Skia.Color('rgba(234, 244, 251, 0.10)'),
+    stickKnobIdle: Skia.Color('rgba(234, 244, 251, 0.24)'),
     bubbleNear: Skia.Color('rgba(226, 244, 255, 0.14)'),
     bubbleFar: Skia.Color('rgba(226, 244, 255, 0.07)'),
     lightRay: Skia.Color('rgba(186, 226, 255, 0.05)'),

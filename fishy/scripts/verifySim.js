@@ -100,6 +100,13 @@ const check = (name, pass, detail) => results.push({ name, pass, detail });
 }
 
 // 2 & 3. Coast on release, at start size and at apex size.
+//
+// The coast is COAST_BODY_LENGTHS wherever the response-time cap does not bind,
+// and maxSpeed * MAX_COAST_SECONDS wherever it does. Which is to say: identical
+// handling at every size right up to the point where "identical" would mean
+// taking a second and a half to answer the stick, and bounded in time from
+// there. The crossover lands near size 3, so size 1 exercises one branch and
+// apex the other.
 for (const size of [1, C.APEX_SIZE]) {
   const r = newRun(size, 0, 0);
   touch(r, 0, 1e6);
@@ -107,9 +114,40 @@ for (const size of [1, C.APEX_SIZE]) {
   const y0 = r.p[S.P_Y];
   release(r);
   advance(r, 20, 1 / 60, ARENA);
-  const bl = (r.p[S.P_Y] - y0) / (C.PLAYER_BASE_LENGTH_PX * size);
-  check(`coast distance at size ${size}`, Math.abs(bl - C.COAST_BODY_LENGTHS) < 0.02,
-    `${bl.toFixed(3)} BL vs ${C.COAST_BODY_LENGTHS} (size invariant)`);
+  const length = C.PLAYER_BASE_LENGTH_PX * size;
+  const maxSpeed = C.BASE_MAX_SPEED * Math.pow(size, C.SPEED_SIZE_EXPONENT);
+  const predicted = Math.min(C.COAST_BODY_LENGTHS * length, maxSpeed * C.MAX_COAST_SECONDS);
+  const capped = maxSpeed * C.MAX_COAST_SECONDS < C.COAST_BODY_LENGTHS * length;
+  const px = r.p[S.P_Y] - y0;
+  check(`coast distance at size ${size}`, Math.abs(px - predicted) < 0.02 * length,
+    `${(px / length).toFixed(3)} BL, predicted ${(predicted / length).toFixed(3)} ` +
+    `(${capped ? 'time-capped' : 'body-length rule'})`);
+}
+
+// 3b. The cap is doing its job: the fish answers within a bounded time at every
+// size. This is the property the body-length rule cannot give on its own, and
+// the one that made a big fish miserable to steer before the cap existed.
+for (const size of [1, C.APEX_SIZE]) {
+  const r = newRun(size, 0, 0);
+  touch(r, 0, 1e6);
+  const maxSpeed = C.BASE_MAX_SPEED * Math.pow(size, C.SPEED_SIZE_EXPONENT);
+  // Time to one time constant: 63.2% of the way to top speed, which for this
+  // exponential approach is exactly 1/drag whatever the drag works out to be.
+  let elapsed = 0;
+  let rise = Infinity;
+  advance(r, 5, C.SIM_DT, ARENA, (p) => {
+    elapsed += C.SIM_DT;
+    if (rise === Infinity && Math.abs(p[S.P_VY]) >= maxSpeed * 0.632) {
+      rise = elapsed;
+    }
+  });
+  // The crossing can only be observed on a step boundary, so at apex, where the
+  // cap binds and the true rise time is exactly MAX_COAST_SECONDS, the measured
+  // value lands on the next step up. Two steps of slack covers that without
+  // coming close to hiding a regression: before the cap existed this read 1.5 s.
+  check(`reaches speed within MAX_COAST_SECONDS at size ${size}`,
+    rise <= C.MAX_COAST_SECONDS + 2 * C.SIM_DT,
+    `${rise.toFixed(3)} s to one time constant, ceiling is ${C.MAX_COAST_SECONDS} s`);
 }
 
 // 4. Approach overshoot stays small, and the fish settles on the finger.
@@ -352,20 +390,41 @@ const liveIdentities = (pond) => {
 {
   const pond = newPond(53);
   const sum = new Array(T.TIER_COUNT).fill(0), n = new Array(T.TIER_COUNT).fill(0);
+  let fastest = 0;
+  // Sampled across the whole curve, not just the opening: the tier size bands
+  // move as the player grows, so the quickest fish the game can produce is not
+  // necessarily one the opening pond would ever have spawned.
   for (let i = 0; i < 4000; i++) {
+    pond.p[S.P_EATEN] = (i / 4000) * C.APEX_EATEN;
     pond.l[S.L_ENEMY_COUNT] = 0;
     E.spawnAtEdge(pond.pool, pond.l, pond.p, pond.rng, VIEW.l, VIEW.r, VIEW.t, VIEW.b);
     const tier = pond.pool[S.E_TIER];
     sum[tier] += Math.abs(pond.pool[S.E_VX]); n[tier]++;
+    fastest = Math.max(fastest, Math.abs(pond.pool[S.E_VX]));
   }
+  pond.p[S.P_EATEN] = 0;
   const mean = sum.map((s, i) => (n[i] ? s / n[i] : 0));
   let monotonic = true;
   for (let i = 1; i < T.TIER_COUNT; i++) if (mean[i] >= mean[i - 1]) monotonic = false;
   check('speed falls monotonically as tier size rises', monotonic,
     mean.map((m) => m.toFixed(0)).join(' > ') + ' px/s');
-  const playerTop = C.BASE_MAX_SPEED;
-  check('nothing can outrun the player', Math.max(...mean) < playerTop,
-    `fastest tier ${Math.max(...mean).toFixed(0)} px/s vs player ${playerTop}`);
+
+  // Measured against the player at APEX, which is now the slowest the player
+  // ever is. Enemy speeds no longer scale with the player, so this invariant is
+  // no longer free the way it was when the whole pond shrank alongside them:
+  // it is a real constraint on how far SPEED_SIZE_EXPONENT may fall.
+  const playerApex = C.BASE_MAX_SPEED * Math.pow(C.APEX_SIZE, C.SPEED_SIZE_EXPONENT);
+  check('nothing outruns the player even at apex, where the player is slowest',
+    fastest < playerApex,
+    `fastest fish ever spawned ${fastest.toFixed(0)} px/s vs an apex player at ${playerApex.toFixed(0)}`);
+
+  // The point of the retune: a beginner is comfortably the quickest thing in
+  // the pond, and a leviathan only barely is.
+  const playerStart = C.BASE_MAX_SPEED;
+  check('the speed advantage shrinks substantially as the player grows',
+    playerStart / fastest > 1.8 && playerApex / fastest < 1.5,
+    `${(playerStart / fastest).toFixed(2)}x at the start, ` +
+    `${(playerApex / fastest).toFixed(2)}x at apex, against the fastest fish`);
 }
 
 // 18. The pond the player actually swims in delivers the three phases.

@@ -1,5 +1,6 @@
 import {
   ARRIVE_BODY_LENGTHS,
+  ARRIVE_MAX_PX,
   BASE_MAX_SPEED,
   COAST_BODY_LENGTHS,
   EDGE_BOUNCE_MIN,
@@ -7,6 +8,7 @@ import {
   FINGER_VELOCITY_SMOOTHING,
   FLIP_DEADZONE,
   GROWTH_EASE_SECONDS,
+  MAX_COAST_SECONDS,
   PLAYER_BASE_LENGTH_PX,
   SPEED_SIZE_EXPONENT,
   TAIL_IDLE_RATE,
@@ -75,7 +77,11 @@ export function stepPlayer(
   const size = p[P_SIZE];
   const length = PLAYER_BASE_LENGTH_PX * size;
   const maxSpeed = BASE_MAX_SPEED * Math.pow(size, SPEED_SIZE_EXPONENT);
-  const drag = maxSpeed / (COAST_BODY_LENGTHS * length);
+  // Coast the documented number of body lengths, but never take longer than
+  // MAX_COAST_SECONDS to answer: past about size 3 a coast measured in body
+  // lengths is slow enough in wall-clock terms to read as input lag rather than
+  // as weight. Below that the cap never binds and the body-length rule is exact.
+  const drag = Math.max(maxSpeed / (COAST_BODY_LENGTHS * length), 1 / MAX_COAST_SECONDS);
 
   // Smooth the reported finger velocity before acting on it.
   const smooth = 1 - Math.exp(-dt / FINGER_VELOCITY_SMOOTHING);
@@ -108,7 +114,10 @@ export function stepPlayer(
     const dy = input[I_TARGET_Y] - p[P_Y];
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 1e-4) {
-      const arrive = ARRIVE_BODY_LENGTHS * length;
+      // Capped in px as well as in body lengths: an apex fish's body-length
+      // ramp is wider than the screen, so without the cap it would spend every
+      // reachable distance easing off and never actually commit to top speed.
+      const arrive = Math.min(ARRIVE_BODY_LENGTHS * length, ARRIVE_MAX_PX);
       const speed = maxSpeed * Math.min(1, dist / arrive);
       desiredVx += (dx / dist) * speed;
       desiredVy += (dy / dist) * speed;
