@@ -1,0 +1,342 @@
+/**
+ * Tuning constants shared by the simulation and the renderer.
+ *
+ * Sizes are expressed as a multiple of the player's *size* value, and lengths
+ * in device-independent pixels. A fish of size 1.0 is PLAYER_BASE_LENGTH_PX
+ * long from nose to tail tip.
+ */
+
+/** Player size at the start of a run. */
+export const PLAYER_START_SIZE = 1.0;
+
+/** Nose-to-tail length, in px, of a fish at size 1.0. */
+export const PLAYER_BASE_LENGTH_PX = 24;
+
+/** Tail wag cycles per second. Slow enough to read, fast enough to feel alive. */
+export const TAIL_WAG_HZ = 2.2;
+
+/** Peak tail deflection, in degrees, either side of centre. */
+export const TAIL_WAG_DEG = 15;
+
+// --- Simulation -------------------------------------------------------------
+
+/** Simulation rate, in Hz. Fixed and independent of display refresh, so a 60Hz
+ * phone and a 120Hz phone run identical physics. */
+export const SIM_HZ = 120;
+
+/** Length of one simulation step, in seconds. */
+export const SIM_DT = 1 / SIM_HZ;
+
+/** Longest real frame the loop will integrate, in seconds. A stall longer than
+ * this (a debugger pause, a slow resume) is truncated rather than replayed, so
+ * the fish never teleports across the pond to "catch up". */
+export const MAX_FRAME_TIME = 0.25;
+
+// --- Movement ---------------------------------------------------------------
+
+/**
+ * Top speed in px/s at size 1.0, which is now also the fastest the player is
+ * ever going to be: see SPEED_SIZE_EXPONENT.
+ */
+export const BASE_MAX_SPEED = 340;
+
+/**
+ * Speed *falls* with size. A minnow is quick and slippery, a leviathan is a
+ * slow-moving wall, and the run is the arc between them.
+ *
+ * This is the opposite of the obvious choice, and it is deliberate. Growth is
+ * the only thing that changes over a run, so it has to be the thing that
+ * changes how the game plays; a player who is simply better at everything by
+ * the end has no arc. Trading speed for size gives the growth a cost to weigh
+ * against its reward, and it matches what the fish looks like: nothing that
+ * long should dart.
+ *
+ * At -0.22 the player tops out at 340 px/s at size 1 and 210 px/s at apex, so
+ * a leviathan is a little under two thirds as fast in a straight line while
+ * being nine times as long: from about 14 body lengths a second to about one.
+ * That is where the "heavy" comes from; it is felt as agility, not as px/s.
+ *
+ * The pond does not follow the player down, because enemy speeds are pinned to
+ * BASE_MAX_SPEED rather than to the player's current speed (see
+ * ENEMY_SPEED_FRACTION). Were they relative, this exponent would cancel out
+ * and growth would change nothing at all.
+ */
+export const SPEED_SIZE_EXPONENT = -0.22;
+
+/**
+ * How far the fish coasts, in body lengths, after you lift your finger at full
+ * speed. This single number is the game's floatiness: raise it for a looser,
+ * more drifty fish, lower it for tighter control.
+ */
+export const COAST_BODY_LENGTHS = 1.5;
+
+/**
+ * Ceiling on how long the fish may take to answer the controls, in seconds
+ * (one time constant of the velocity approach).
+ *
+ * A coast measured in body lengths keeps the handling identical at every size,
+ * which is the right instinct and the wrong result at the top of the curve: the
+ * time that coast takes grows with length and with the loss of speed, and at
+ * apex it works out at about 1.5 seconds to reach a new heading. That is not
+ * "heavy", it is "broken", and it is most of what made a big fish miserable to
+ * steer.
+ *
+ * So the coast is capped in time rather than in distance. Below about size 3
+ * nothing changes and the body-length rule holds exactly; above it the fish
+ * keeps answering within this bound, and its coast quietly shortens in body
+ * lengths instead. Weight you can steer reads as weight; weight you cannot
+ * reads as lag.
+ */
+export const MAX_COAST_SECONDS = 0.45;
+
+/**
+ * Distance from the touch point, in body lengths, over which the fish eases off
+ * so it settles under your finger instead of sailing past it.
+ *
+ * This is not a free parameter. Together with the coast distance it sets the
+ * damping ratio of the approach:
+ *
+ *     zeta = 0.5 * sqrt(ARRIVE_BODY_LENGTHS / COAST_BODY_LENGTHS)
+ *
+ * The real cost of this number is reach: since it scales with the player's own
+ * length, a big fish only touches top speed once your finger is many body
+ * lengths away, which on a phone screen means never. Measured at 4.0 (the
+ * original, overshoot-free value): a fish at apex size reached only 46% of top
+ * speed on a run at a point 200px out, and as little as 23% holding a finger
+ * steadily 200px ahead, which is what "hard to navigate" actually was.
+ *
+ * 3.0 was chosen by measuring the trade rather than guessing at it: reach at
+ * apex rises to 63% (running) and 31% (held steady) at 200px, for an overshoot
+ * that grows from ~7% of the fish's own body length to ~20%, a settle wobble
+ * rather than a snap back. Both figures scale with body length, so the
+ * trade-off is the same at every size, not just at apex.
+ */
+export const ARRIVE_BODY_LENGTHS = 3.0;
+
+/**
+ * Ceiling on the arrival distance, in px, whatever the body-length rule asks
+ * for.
+ *
+ * Same disease as MAX_COAST_SECONDS, in the other half of the control law. At
+ * apex the body-length rule wants to start easing off 648px from your finger,
+ * which is wider than the phone: the fish spends the entire screen on the ramp
+ * and never once commits to top speed. Capping the ramp at a distance that fits
+ * on a screen is what makes the drag scheme reach full speed at any size.
+ *
+ * The cap costs damping, since the two numbers together set the damping ratio,
+ * but far less than it looks: with the coast capped in time as well, the ratio
+ * at apex works out at about 0.49 against 0.71 at size 1, so the overshoot goes
+ * from a few percent to about 17% of the ramp. On a fish that long, that is a
+ * settle, not a lurch.
+ */
+export const ARRIVE_MAX_PX = 90;
+
+/**
+ * Seconds over which raw finger velocity is smoothed before the fish acts on
+ * it. Long enough to reject touch jitter, short enough that changing direction
+ * still feels immediate. Kept short because this is the main lever for active
+ * steering: it feeds a finger's own speed straight into desired velocity,
+ * uncapped by ARRIVE_BODY_LENGTHS, so dragging briskly reaches top speed at any
+ * size where the arrival ramp alone would not.
+ */
+export const FINGER_VELOCITY_SMOOTHING = 0.05;
+
+/** Below this fraction of top speed the fish keeps its current heading, so a
+ * fish hovering almost still does not strobe between facings. */
+export const FLIP_DEADZONE = 0.06;
+
+/** How much horizontal or vertical speed survives a wall bounce. */
+export const EDGE_RESTITUTION = 0.3;
+
+/** Below this fraction of top speed, hitting a wall stops the fish instead of
+ * bouncing it, so holding a finger past the edge does not buzz. */
+export const EDGE_BOUNCE_MIN = 0.15;
+
+/** Tail beat rate when drifting, as a fraction of the rate at full speed. */
+export const TAIL_IDLE_RATE = 0.55;
+
+// --- Enemies ----------------------------------------------------------------
+
+/** Hard cap on fish in the pond at once, to protect the frame rate. */
+export const MAX_FISH = 20;
+
+/** How many fish the pond is stocked with before the first frame, so a run
+ * opens on a living pond rather than an empty one. */
+export const SEED_FISH = 9;
+
+/**
+ * Enemy speed as a fraction of the player's *opening* top speed, before the
+ * size term.
+ *
+ * Pinned to BASE_MAX_SPEED, not to whatever the player's speed happens to be
+ * right now, and that distinction is the whole point. Scaling enemies off the
+ * player's current speed cancels SPEED_SIZE_EXPONENT exactly: the pond would
+ * slow down in perfect step with the player and growth would change nothing
+ * anyone could feel. Holding the pond still and letting the player fall through
+ * it is what turns growth into a trade.
+ */
+export const ENEMY_SPEED_FRACTION = 0.3;
+
+/**
+ * Speed falls off with relative size, so small fish dart and big ones lumber.
+ *
+ * At these numbers the fastest thing in the pond is small prey, at about 166
+ * px/s whatever stage the run is at, and the largest predators lumber at about
+ * 55. Against a starting player that is a two-to-one speed advantage over the
+ * quickest fish on screen and six-to-one over the biggest, which is what buys a
+ * beginner room to make mistakes. Against a player at apex the same fish is
+ * only 1.27x slower.
+ *
+ * The invariant survives the change: nothing outswims the player at any size,
+ * so a death is still a misjudged gap rather than something running you down.
+ * It just stops being comfortable.
+ */
+export const ENEMY_SPEED_SIZE_EXPONENT = 0.45;
+
+/**
+ * Seconds between spawn attempts, drawn uniformly from this range.
+ *
+ * Attempts are frequent and gated on a population target rather than spaced to
+ * meter the flow directly. A fixed interval does not survive growth: as the
+ * player gets larger the fish are larger and faster relative to the screen, so
+ * they clear the pond sooner, and a rate tuned for the opening leaves apex play
+ * in nearly empty water.
+ */
+export const SPAWN_INTERVAL_MIN = 0.15;
+export const SPAWN_INTERVAL_MAX = 0.3;
+
+/**
+ * How many fish the spawner tries to keep in the pond, at the start of a run
+ * and at apex. It rises so that reaching Leviathan feels like being handed a
+ * feast rather than an empty ocean. MAX_FISH remains the hard ceiling.
+ */
+export const SPAWN_TARGET_START = 11;
+export const SPAWN_TARGET_APEX = 15;
+
+/**
+ * Fish one attempt may place. One per attempt is not enough to hold the target
+ * at apex, where fish cross in under three seconds and sustaining the pond
+ * needs more spawns per second than the interval allows on its own.
+ */
+export const SPAWN_MAX_PER_ATTEMPT = 2;
+
+// --- Growth -----------------------------------------------------------------
+
+/**
+ * Size the player tops out at, roughly 216px nose to tail: over half the width
+ * of a phone screen, unmistakably a leviathan, and still leaving room to move.
+ *
+ * Bigger is not better here. The player's own size is half of every collision,
+ * so growing the apex grows the share of the pond that is lethal in mid-run,
+ * measurably: at 12 the worst point of a run had 19% of the water fatal to
+ * stand in, against 14% at 9, for a fish that mostly just crowds the screen.
+ */
+export const APEX_SIZE = 9;
+
+/** Fish eaten to reach apex size. The spec's window is 150 to 200; the upper
+ * end is what puts run length in range. */
+export const APEX_EATEN = 200;
+
+/**
+ * Shapes the growth curve: size = APEX_SIZE ^ (progress ^ GROWTH_EXPONENT).
+ * Below 1 the curve is concave, so growth per fish falls away as the run goes
+ * on. At 0.5 the first bite is worth about 21% of the player's size and the
+ * last under 1%.
+ */
+export const GROWTH_EXPONENT = 0.5;
+
+/**
+ * Seconds for the player to visibly grow into a new size, near enough.
+ *
+ * Growth is eased rather than applied instantly for two reasons: a 21% pop on
+ * the first bite is jarring, and instant growth can expand the player into a
+ * predator that was a safe distance away a frame earlier, which is a death the
+ * player could not have avoided. Easing gives them room to swim clear, and
+ * because collision reads the same eased size, the hitbox never disagrees with
+ * what is on screen.
+ */
+export const GROWTH_EASE_SECONDS = 0.25;
+
+/** Points for eating a fish of exactly the player's size. Smaller fish score
+ * proportionally less, so the risk of going after a big one is what pays.
+ * Provisional: the HUD lands in phase 6. */
+export const SCORE_PER_FISH = 100;
+
+/** Clearance, in player body lengths, that a seeded predator must leave around
+ * the player's starting position. Edge spawns cannot overlap the player by
+ * construction; the opening stock is the only case that has to be checked. */
+export const SEED_PREDATOR_CLEARANCE = 3.5;
+
+/** Tail beat rate of an enemy relative to the player's, before the size term. */
+export const ENEMY_TAIL_RATE = 0.9;
+
+// --- Controls ---------------------------------------------------------------
+
+/** Deflection, in px, at which the floating joystick reads as fully pushed. */
+export const JOYSTICK_RADIUS = 62;
+
+/** Deflection below this fraction of the radius reads as no input, so resting a
+ * thumb does not creep the fish along. */
+export const JOYSTICK_DEADZONE = 0.12;
+
+/**
+ * Where the resting joystick sits when nothing is touching the screen, as a
+ * fraction of the screen and as an inset from the bottom in px.
+ *
+ * The stick still floats: it materialises wherever the thumb actually lands,
+ * anywhere on the screen. This is only the hint that says the stick is there at
+ * all, which a control that appears solely on contact otherwise never tells
+ * anybody. Centred rather than tucked into a corner precisely because it is not
+ * a fixed control and should not claim to be.
+ */
+export const JOYSTICK_HOME_X_FRACTION = 0.5;
+export const JOYSTICK_HOME_BOTTOM_PX = 132;
+
+// --- World -------------------------------------------------------------------
+
+/**
+ * The pond is bigger than the screen. A camera follows the player and clamps
+ * to the world's edges, so swimming left, right, or down keeps revealing more
+ * water instead of pinning you against the glass.
+ *
+ * Sized as multiples of the screen rather than fixed pixels, so the same
+ * proportions hold on any device. The top of the world is the surface and does
+ * not move: there is nothing to swim up into, so only width and the way down to
+ * the floor need the extra room.
+ */
+export const WORLD_WIDTH_SCREENS = 2.6;
+export const WORLD_HEIGHT_SCREENS = 1.7;
+
+/**
+ * Fraction of the world's height given to the ocean floor, both as the visual
+ * band and as where the player's downward swim actually stops. The player is
+ * clamped to the top of this band, not to the bottom of the world, so the fish
+ * never overlaps the seabed it is drawn on top of.
+ */
+export const FLOOR_BAND_FRACTION = 0.14;
+
+/**
+ * How far past the camera's edge a fish is allowed to travel before the pool
+ * reclaims its slot. Despawn is relative to the current viewport, not the
+ * world, since a fish is only worth keeping alive while it could plausibly
+ * still swim into view. The margin exists so a camera pan does not scrub a
+ * fish out the instant it crosses the edge of what happens to be visible.
+ */
+export const DESPAWN_VIEWPORT_MARGIN_PX = 160;
+
+// --- Jellyfish ---------------------------------------------------------------
+
+/**
+ * Chance that a spawned fish is a jellyfish rather than an ordinary swimmer,
+ * applied after its size tier is chosen. Kind and tier are independent: a
+ * jellyfish is exactly as dangerous as any other fish of its size, and reads
+ * differently on screen because it drifts instead of swimming.
+ */
+export const JELLYFISH_CHANCE = 0.16;
+
+/** Bobbing rate, in cycles per second. Slow and languid, unlike a fish's tail
+ * beat, which is most of what sells "this is not a fish." */
+export const JELLYFISH_BOB_HZ = 0.18;
+
+/** Bob amplitude, as a fraction of the jellyfish's own length. */
+export const JELLYFISH_BOB_AMPLITUDE = 0.35;

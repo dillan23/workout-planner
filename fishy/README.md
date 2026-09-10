@@ -1,0 +1,379 @@
+# Fishy
+
+A faithful modernization of the 2003 Flash game by Jonas. Eat anything smaller
+than you, die on contact with anything bigger, grow until nothing in the pond
+can touch you.
+
+React Native + Expo SDK 57, rendered entirely with Skia. No game engine.
+
+## Status
+
+All seven original phases are complete, plus two follow-up passes: a bigger,
+scrollable world with an ocean floor and jellyfish, then a controls overhaul
+that made the joystick the default and turned growth into a trade — the player
+now gets *slower* as it gets bigger. See "The pond is bigger than the screen"
+and "Controls" below.
+
+| # | Phase | State |
+|---|-------|-------|
+| 1 | Scaffold, Skia canvas, portrait lock | done |
+| 2 | Fixed timestep loop, drag controls | done |
+| 3 | Enemy spawner, pooling, swimming | done |
+| 4 | Collision, eating, growth, death | done |
+| 5 | Difficulty curve | done |
+| 6 | Screens, HUD, persistence | done |
+| 7 | Audio, haptics, performance pass | done |
+| 8 | Scrollable world, floor, jellyfish | done |
+| 9 | Joystick by default, speed-vs-size trade, response caps | done |
+
+## Running it
+
+There are three ways to play, in increasing order of setup.
+
+### In a browser (no Apple account, no Mac, no computer)
+
+The game runs in mobile Safari, and this is the only path that needs nothing
+from Apple. Skia becomes CanvasKit, a WebAssembly build, fetched before the
+first frame.
+
+`.github/workflows/fishy-pages.yml` builds and publishes it to GitHub Pages on
+every push. Enable it once, from a phone if that is all you have:
+
+1. Repository **Settings -> Pages**
+2. **Source: GitHub Actions**
+
+The next push publishes to `https://<user>.github.io/<repo>/`. Open that in
+Safari, then **Share -> Add to Home Screen** for a full-screen launcher with no
+browser chrome.
+
+To build it yourself instead:
+
+```bash
+cd fishy
+npm install
+npm run build:web     # self-contained dist/, wasm included
+npx serve dist        # or any static host
+```
+
+Set `FISHY_BASE_URL=/subdir` when the site will not be served from a domain
+root; the exporter bakes asset paths in at build time. Verified end to end in a
+mobile-sized browser, from both a root and a subdirectory: title, play, drag to
+swim, death, game over, retry.
+
+Two known limits in a browser. iOS Safari refuses programmatic volume control,
+so the mute toggle works but the levels are whatever the device is set to; and
+`expo-haptics` has no web implementation, so the haptics toggle does nothing
+there. Both are platform limits, not missing work.
+
+### On the phone with Expo Go
+
+Worth trying first, since it takes two minutes: install Expo Go from the App
+Store, run `npx expo start`, scan the QR. Whether Skia works inside Expo Go is
+version dependent and best settled by trying it; if the app loads to a red
+screen complaining about a missing native module, it does not, and you want a
+development build.
+
+### With a development build
+
+The full native app, and the only way to get real frame numbers.
+
+```bash
+npx eas build --profile development --platform ios   # builds in the cloud, no Mac needed
+```
+
+Installing on a physical iPhone needs the device registered to an Apple
+Developer account, which is a paid programme. `npx expo run:ios` builds locally
+instead and needs a Mac with Xcode. Either way you only do it once; after that
+`npx expo start` behaves exactly as it would with Expo Go.
+
+To check the movement model without a device:
+
+```bash
+npm run verify
+npm run typecheck
+```
+
+## Architecture
+
+```
+src/
+  game/     simulation: loop, physics, collision, spawner, entity pool
+  render/   Skia draw functions, fish paths, background layers
+  screens/  the canvas, and the screens layered over it
+  state/    persistence, settings store
+  ui/       buttons, switches, the live HUD counter
+  audio/    sound manager
+```
+
+Three decisions shape everything else:
+
+**One picture, one thread.** The whole frame is a single Skia picture rebuilt
+inside a Reanimated derived value, which runs on the UI thread. No React state
+participates in the frame loop, so no re-render can ever be triggered by
+gameplay, and JS-thread work (storage writes, navigation, audio) cannot stall
+the simulation.
+
+**One silhouette, scaled.** Every fish in the game is the same set of unit-space
+Skia paths (body, tail, dorsal fin, pectoral fin) spanning x = -0.5 (tail tip)
+to x = +0.5 (nose). Size is a canvas scale, direction is a negative x-scale, and
+the tail wag is a rotation about the body joint. Nothing is rebuilt per frame,
+and a fish is as crisp at 40x as at 1x.
+
+**The background is a function of time, not a system.** Bubbles and light
+shafts are computed from the clock and an index, so there is no pool to update,
+nothing to spawn or retire, and not one allocation per frame. It also means they
+cost nothing while paused and resume in exactly the right place.
+
+**Nothing unmounts.** There is no navigator: the Skia canvas is mounted once
+and every screen is an overlay above it. The pond swims on behind the title, the
+pause card and the game over screen alike, and starting a run is a handful of
+buffer writes rather than a scene being built, so Retry is instant with nothing
+to flash. React renders only when a person does something, or when the player
+dies; never on a frame.
+
+The HUD is the awkward case, since it has to show live run state without
+rendering. Both counters are driven from shared values into an uneditable
+`TextInput`, so they update on the same thread the simulation runs on, and only
+on the frames where something was actually eaten.
+
+**Chasing means leading.** The fish's target speed includes the finger's own
+velocity, not just the distance to it. Without that term the closing speed falls
+to zero as the gap shuts, so a fish fleeing faster than you close can never be
+caught from behind: you settle at a fixed distance and trail it forever, which
+is measurable and was real. Dragging along with a fleeing fish now runs it down.
+With the finger held still the term is zero and the arrival is exactly the
+damped one it always was.
+
+**The simulation is plain arithmetic.** State lives in flat `Float32Array`s
+handed to the UI thread once and mutated in place forever, so a frame allocates
+nothing. Real time goes into an accumulator drained in whole 120Hz steps, and
+the renderer interpolates between the last two steps, so the physics is
+identical at 24, 60 or 120fps and still looks smooth. Because none of it touches
+Skia, Reanimated or React, `npm run verify:physics` can measure the handling
+headlessly.
+
+**Fish are relative, not absolute.** A fish is never "big", it is bigger *than
+you*: every tier is a multiple of the player's current size, and enemy speed is
+a fraction of the player's top speed divided by that multiple. Small fish dart,
+leviathans lumber, and nothing can ever run the player down, which is what keeps
+a death felt as a mistake rather than an ambush. The pool is one flat buffer
+whose live fish stay contiguous: despawning swaps the last fish into the vacated
+slot, so there is no free list and iteration is a straight walk.
+
+**The hitbox is the drawn body.** `src/game/fishGeometry.ts` describes the body
+as an ellipse in that same unit space, and both the renderer and the collision
+test read it. Fins and tail sit outside it deliberately: clipping a tail is a
+near miss, not a death, and the two definitions cannot drift apart because there
+is only one.
+
+Drawing every fish from one silhouette also makes collision exact rather than
+approximate. Summing two ellipses' radii is normally only an approximation, but
+all body ellipses here share an aspect ratio, so scaling the plane turns both
+into circles whose Minkowski sum is a circle, which maps back to precisely the
+ellipse the test uses. Verified against brute force over 3000 random pairs.
+
+## Replacing the sounds
+
+The three files in `assets/audio` are synthesised placeholders, generated by
+`npm run sounds` (see `scripts/makePlaceholderSounds.js` for exactly what each
+one is). Drop real audio over them, keeping the names, and nothing else needs to
+change:
+
+| File | What it is | Notes |
+|------|-----------|-------|
+| `assets/audio/ambient-loop.wav` | The underwater bed, looping continuously while a run is live | Must loop seamlessly: it is played with `loop = true` and never crossfaded. 4 to 10 seconds. |
+| `assets/audio/bite.wav` | One wet burp, played on every fish eaten | Keep it under about 200 ms. At apex the player eats roughly twice a second, and three voices play round robin, so anything longer stacks into mush. |
+| `assets/audio/death.wav` | The low thud when the run ends | Around 0.5 to 1 second. Plays once, over the top of the ambient bed. |
+
+Any format `expo-audio` decodes will work (`.wav`, `.m4a`, `.mp3`); if you change
+the extension, update the three `require` calls in `src/audio/sounds.ts`. Mixing
+levels live in the same file as `AMBIENT_VOLUME`, `BITE_VOLUME` and
+`DEATH_VOLUME`.
+
+## Measuring performance
+
+Two of the three performance requirements are checked by `npm run verify` and
+hold on any machine:
+
+- **Zero allocations in the frame loop.** Verified by watching for garbage
+  collections rather than by measuring retained heap, since a collection
+  reclaims the evidence before it can be counted. 400,000 simulation steps with
+  a full pond trigger no collections at all.
+- **Draw calls per frame.** 12 per fish, so 252 at the pool cap plus roughly 30
+  for the ocean, light shafts and bubbles.
+
+The third, a locked 60fps on a mid-range Android device, needs the device. A
+development build shows a live readout in the top left: rolling frame rate, and
+the worst single frame in the last half second. The worst-frame figure is the
+one that matters; a mean of 60 hides exactly the stutter worth finding.
+
+```bash
+npx expo run:android          # a dev build, so the meter is compiled in
+```
+
+Play a full run and watch the worst-frame number. Under 16.7 ms throughout means
+60fps held. To capture more than a glance, use the platform profilers:
+
+```bash
+# Frame timing straight from the compositor, while the game is running
+adb shell dumpsys gfxinfo com.fishy.game framestats
+
+# Or a full system trace to see which thread is late
+npx react-native profile-hermes
+```
+
+The meter is `__DEV__`-only and compiles out of release builds.
+
+## Tuning
+
+Two curves shape a run, and they are deliberately driven by different things.
+
+**Size** is a concave function of fish eaten: `APEX_SIZE ^ (progress ^
+GROWTH_EXPONENT)`. The first bite is worth 21% of the player's size and the last
+under 1%, a 29x falloff, so early bites are an event and late ones are barely
+perceptible. Both ends are exact by construction rather than tuned to land.
+
+**Difficulty** is keyed on fish eaten, not on size. Size grows fast early, so
+pinning the difficulty curve to it would race the player through Terror and
+Balance in the first ten bites and leave the rest of the run in Leviathan.
+Counting fish gives the three phases roughly equal thirds.
+
+Two things shift as a run progresses, and both are keyframed on the phase
+boundaries so a phase starts when it says it does:
+
+- **Spawn weights.** The lethal share of the pond runs 74% at the opening, 36%
+  in mid-run, and exactly 0% once Leviathan begins.
+- **Tier sizes.** Predator bands close toward the player as it grows. A tier is
+  a multiple of the player, so fixed multiples turn a 4.5x predator into a
+  700px wall on a 393px screen by mid-run. Measured, that took the lethal share
+  of the water from 4% to 35% over a run: not a difficulty curve, just the
+  screen filling up. The neutral band slides below 1.0 late in Balance, which
+  is what makes "nothing can eat a Leviathan" literally true rather than true
+  apart from a rounding error.
+
+The lethal share of the *water* holds roughly level across a run even as the
+lethal share of the *pond* falls, because the player is half of every collision
+and keeps growing. Those two effects cancelling is the intended shape.
+
+A third curve runs underneath both: **speed falls as size rises**, so the pond
+gets no more dangerous while the player gets steadily less able to dart out of
+it. That one lives in Controls, below, because it is felt as handling rather
+than as difficulty.
+
+`npm run verify` measures run length with a bot that steers at an intercept. It
+is immortal, never dodges, and gets none of the finger-velocity help a person
+gets for free, so treat its time as a regression guard on feeding rate rather
+than a prediction of how long a person takes.
+
+## Controls
+
+`ARRIVE_BODY_LENGTHS` scales with the player's own length, and that stopped
+being safe once a fish could grow past a couple of screen-widths: holding a
+finger a realistic 150 to 250px away, measured, got a size-9 player only 17%
+to 29% of its own top speed. It got worse the bigger the fish, which is
+backwards for a difficulty curve. `ARRIVE_BODY_LENGTHS` moved from 4.0 to 3.0,
+which raises that to 63% at a 200px hold, in exchange for overshoot rising
+from about 7% of the fish's own length to about 20%, a settle wobble rather
+than a snap-back. Both figures scale with body length, so the trade holds at
+every size, not just at apex. `FINGER_VELOCITY_SMOOTHING` also tightened, from
+0.08s to 0.05s, since that term is the main lever for *active* steering: it
+feeds a finger's own speed straight into desired velocity, uncapped by the
+arrival ramp, so a brisk drag reaches top speed at any size the ramp alone
+would not. `npm run verify` carries this as a permanent regression check
+against the real `stepPlayer`, not a re-derived formula.
+
+That was not enough, and the second pass is the one that mattered.
+
+**The joystick is the default now.** Drag-to-follow is the more elegant scheme
+on paper and the harder one to actually steer, for a reason no amount of tuning
+fixes: the fish chases a point your own thumb is sitting on top of, so the thing
+you are aiming at is the thing you cannot see. A stick separates the two and
+states a direction outright instead of inferring one from a distance. It also
+draws itself at rest, faintly, near the bottom of the screen — a control that
+only exists on contact is invisible until you have already guessed it is there.
+The stick still floats: that resting position is a hint, not a hitbox, and the
+real stick appears wherever the thumb actually lands.
+
+**Both halves of the control law are now capped in absolute terms.** Scaling
+everything off body length keeps handling identical at every size, which is the
+right instinct and the wrong result at the top of the curve:
+
+- `ARRIVE_MAX_PX` (90) caps the arrival ramp. At apex the body-length rule wants
+  to start easing off 648px from your finger — wider than the phone — so the
+  fish spent the whole screen on the ramp and never committed to top speed.
+  Measured reach at a realistic 200px drag went from 63% of top speed at apex to
+  96%, and 100% at size 1.
+- `MAX_COAST_SECONDS` (0.45) caps the coast in *time* rather than distance. The
+  time a body-length coast takes grows with length, and at apex it worked out at
+  about 1.5 seconds to answer the stick. That is not weight, it is lag. Below
+  about size 3 the cap never binds and the body-length rule is exact; above it
+  the coast quietly shortens in body lengths instead.
+
+**Growth is a trade, not a straight upgrade.** `SPEED_SIZE_EXPONENT` went from
++0.35 to **-0.22**: the player is *fastest at size 1* and slowest at apex, 340
+px/s down to 210. Since the fish is nine times as long by then, agility falls
+from about 14 body lengths a second to about one. A minnow is quick and
+slippery; a leviathan is a slow-moving wall.
+
+This only works because enemy speeds are pinned to `BASE_MAX_SPEED` rather than
+to the player's *current* top speed. Scaling the pond off the player cancels the
+exponent exactly — the whole pond would slow down in step and growth would
+change nothing anyone could feel. Holding the pond still and letting the player
+fall through it is what turns the size curve into something you weigh:
+
+| | fastest fish | player | advantage |
+|---|---|---|---|
+| size 1 | 166 px/s | 340 px/s | 2.05x |
+| apex | 166 px/s | 210 px/s | 1.27x |
+
+The old invariant survives: nothing outswims the player at any size, so a death
+is still a misjudged gap rather than something running you down. It just stops
+being comfortable. `npm run verify` checks that against the player at *apex*,
+where it is now a real constraint on how far `SPEED_SIZE_EXPONENT` may fall,
+rather than something the old relative-speed model gave away for free.
+
+## The pond is bigger than the screen
+
+The world is 2.6x the screen's width and 1.7x its height (`WORLD_WIDTH_SCREENS`
+/ `WORLD_HEIGHT_SCREENS`), with a camera that follows the player and clamps to
+the world's edges. The top of the world is the surface and never moves, since
+there is nothing to swim up into; only width and the way down to the floor
+needed the extra room.
+
+Two things had to change for this, and both are in `src/game/world.ts`:
+
+- **The player clamps to the world, not the screen.** `stepPlayer` already took
+  its clamp bounds as plain parameters, so the only change was what the caller
+  passes: the world's size instead of the screen's, and the top of the floor
+  band rather than the world's full height, so the fish never overlaps the
+  seabed it is drawn on top of.
+- **Spawning and despawning are relative to the camera's current viewport, not
+  a fixed rectangle at the world's origin.** A fish spawns just off whatever the
+  camera is currently showing, and despawns once it drifts well past that,
+  wherever in the world that viewport happens to be. This is what makes the
+  pond stay populated no matter how far the player swims, rather than only ever
+  near wherever the run began.
+
+World size and camera position are written into the loop buffer's own fields,
+not returned as objects: this codebase's zero-allocation requirement is
+verified (see Performance, above), and a fresh `{x, y}` every simulation step
+would have broken it. The renderer's camera is the one exception, computed as
+plain scalars rather than through the buffer, since it tracks its own
+separately interpolated position and is used once, locally, never read back.
+
+Predator tier bands already close toward the player as it grows (see Tuning,
+above); nothing about that changed. What did change is that a predator's
+*danger* is now judged against the same viewport-relative pond as everything
+else, which the difficulty-curve tests still confirm holds.
+
+## Notes on the stack
+
+- `expo-av` was removed in SDK 57. Audio in phase 7 will use `expo-audio`.
+- `babel-preset-expo` injects `react-native-worklets/plugin` automatically when
+  the package is installed, so there is no `babel.config.js` to maintain.
+- Skia's `Canvas` uses the `onSize` shared value rather than `onLayout`, which
+  is deprecated under the new architecture.
+- A typed array handed to a shared value is *copied* to the UI thread, not
+  shared. Writing to `someBuffer.value[i]` from the JS thread changes only the
+  JS-side copy and the simulation never sees it. Anything the JS thread needs to
+  tell the loop goes through a scalar shared value.
